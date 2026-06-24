@@ -629,9 +629,9 @@
             <input type="number" id="gotoInput" value="1" onchange="gotoImage()" />
         </div>
         <div class="spacer"></div>
-        <label><input type="checkbox" id="chkRoi" checked /> ROI</label>
-        <label><input type="checkbox" id="chkMask" checked /> Mask</label>
-        <label><input type="checkbox" id="chkLabel" checked /> Label</label>
+        <label><input type="checkbox" id="chkRoi" checked onchange="renderCurrent()" /> ROI</label>
+        <label><input type="checkbox" id="chkMask" checked onchange="renderCurrent()" /> Mask</label>
+        <label><input type="checkbox" id="chkLabel" checked onchange="renderCurrent()" /> Label</label>
         <button class="btn-export" onclick="exportXlsx()">Export XLSX</button>
         <button class="btn-export" onclick="downloadJson()">Download JSON</button>
         <span id="deleteCount" style="color:#f66;font-size:12px;display:none"></span>
@@ -1252,6 +1252,27 @@
                         // RLE contour: draw boundary pixels from mask (thicker lineWidth)
                         ctx.lineWidth = 2;
                         drawMaskContour(ctx, decodedMasks[ann.id], scale, colorStr, ann.id, ownerMap);
+                    }
+                }
+
+                // ---- Inter-mask dividing lines (white) ----
+                if (ownerMap) {
+                    ctx.fillStyle = 'rgba(255,255,255,0.85)';
+                    const step = scale < 0.6 ? 2 : 1;
+                    for (let col = 1; col < ow - 1; col += step) {
+                        for (let row = 1; row < oh - 1; row += step) {
+                            const myId = ownerMap[col * oh + row];
+                            if (!myId) continue;
+                            const left = ownerMap[(col-1) * oh + row];
+                            const right = ownerMap[(col+1) * oh + row];
+                            const up = ownerMap[col * oh + row - 1];
+                            const down = ownerMap[col * oh + row + 1];
+                            if ((left && left !== myId) || (right && right !== myId) ||
+                                (up && up !== myId) || (down && down !== myId)) {
+                                const sx = (col * scale) | 0, sy = (row * scale) | 0;
+                                ctx.fillRect(sx, sy, 2, 2);
+                            }
+                        }
                     }
                 }
 
