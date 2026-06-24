@@ -700,58 +700,36 @@
             };
         }
 
-        // Vary a base color by shifting hue/saturation for instance distinction
-        function varyColor(base, index) {
-            if (index === 0) return base;
-            // Convert RGB to HSL, shift hue, adjust saturation
-            const r = base.r/255, g = base.g/255, b = base.b/255;
-            const max = Math.max(r,g,b), min = Math.min(r,g,b);
-            let h, s, l = (max+min)/2;
-            if (max === min) {
-                h = s = 0;
-            } else {
-                const d = max - min;
-                s = l > 0.5 ? d/(2-max-min) : d/(max+min);
-                if (max===r) h = ((g-b)/d + (g<b?6:0))/6;
-                else if (max===g) h = ((b-r)/d + 2)/6;
-                else h = ((r-g)/d + 4)/6;
-            }
-            // Shift hue by index * larger angle for more aggressive differentiation, vary saturation more
-            h = (h + index * 0.218) % 1;
-            s = Math.min(1, Math.max(0.25, s + ((index%5)-2)*0.12));
-            l = Math.min(0.75, Math.max(0.3, l + ((index%2)*0.08 - 0.04)));
-            // HSL to RGB
-            const hue2rgb = (p,q,t) => {
-                if(t<0)t+=1;
-                if(t>1)t-=1;
-                if(t<1/6)return p+(q-p)*6*t;
-                if(t<1/2)return q;
-                if(t<2/3)return p+(q-p)*(2/3-t)*6;
-                return p;
-            };
-            const q = l<0.5 ? l*(1+s) : l+s-l*s, p = 2*l-q;
+        // Generate a distinct color for each instance using golden-angle hue spacing
+        function instanceColor(index, total) {
+            // Golden angle ≈ 137.508° ensures maximum hue separation between consecutive indices
+            const hue = (index * 137.508) % 360;
+            const s = 0.7 + (index % 3) * 0.1; // 0.7, 0.8, 0.9
+            const l = 0.45 + (index % 2) * 0.12; // 0.45, 0.57
+            const c = (1 - Math.abs(2*l - 1)) * s;
+            const x = c * (1 - Math.abs((hue/60)%2 - 1));
+            const m = l - c/2;
+            let r,g,b;
+            if(hue<60){r=c;g=x;b=0}
+            else if(hue<120){r=x;g=c;b=0}
+            else if(hue<180){r=0;g=c;b=x}
+            else if(hue<240){r=0;g=x;b=c}
+            else if(hue<300){r=x;g=0;b=c}
+            else{r=c;g=0;b=x}
             return {
-                r: Math.round(hue2rgb(p,q,h+1/3)*255),
-                g: Math.round(hue2rgb(p,q,h)*255),
-                b: Math.round(hue2rgb(p,q,h-1/3)*255)
+                r: Math.round((r+m)*255),
+                g: Math.round((g+m)*255),
+                b: Math.round((b+m)*255)
             };
         }
 
         // Assign unique colors per instance within each image
         function assignInstanceColors(anns) {
-            const colors = {}; // ann_id -> {r,g,b}
-            const byCat = {};
-            anns.forEach(ann => {
-                const cid = ann.category_id;
-                if (!byCat[cid]) byCat[cid] = [];
-                byCat[cid].push(ann);
+            const colors = {};
+            const nonRoi = anns.filter(a => a.category_id !== roiCatId);
+            nonRoi.forEach((ann, i) => {
+                colors[ann.id] = instanceColor(i, nonRoi.length);
             });
-            for (const [cid, catAnns] of Object.entries(byCat)) {
-                const base = catColors[cid] || {r:200,g:200,b:200};
-                catAnns.forEach((ann, i) => {
-                    colors[ann.id] = varyColor(base, i);
-                });
-            }
             return colors;
         }
 
