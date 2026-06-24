@@ -497,6 +497,22 @@
             flex: 1;
         }
 
+        .btn-del-ann {
+            width: 100%;
+            margin-top: 8px;
+            padding: 6px;
+            background: #8a3a3a;
+            color: #fff;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+
+        .btn-del-ann:hover {
+            background: #a04a4a;
+        }
+
         ::-webkit-scrollbar {
             width: 7px;
         }
@@ -584,6 +600,7 @@
                     <label>category_id</label>
                     <div id="valCatId" class="value" onclick="copyText(this)">-</div>
                 </div>
+                <button id="btnDelAnn" class="btn-del-ann" onclick="deleteAnnotation()" style="display:none">Delete Annotation</button>
             </div>
 
             <div class="memo-section">
@@ -615,6 +632,8 @@
         <label><input type="checkbox" id="chkMask" checked /> Mask</label>
         <label><input type="checkbox" id="chkLabel" checked /> Label</label>
         <button class="btn-export" onclick="exportXlsx()">Export XLSX</button>
+        <button class="btn-export" onclick="downloadJson()">Download JSON</button>
+        <span id="deleteCount" style="color:#f66;font-size:12px;display:none"></span>
     </footer>
 
     <script>
@@ -636,6 +655,7 @@
         let memos = {}; // key -> {ann_id, image_id, image_file, category, barcode, shipment_id, text, type, click_xy, frame_index}
         let excelMapping = null; // {byImage: {filename -> {task, job_id, frame_index}}, tasks: {task -> {jobs: {job_id -> [{file_name, frame_index}]}}}}
         let treeState = {}; // "task" or "task/job" -> true (expanded)
+        let deletedAnnIds = new Set(); // track deleted annotation ids
 
         // Default category colors
         const DEFAULT_COLORS = {
@@ -810,10 +830,13 @@
                         const col = (j / mh) | 0;
                         const row = j % mh;
                         const pi = (row * canvasW + col) * 4;
-                        od[pi] = r;
-                        od[pi+1] = g;
-                        od[pi+2] = b;
-                        od[pi+3] = a;
+                        if (od[pi+3] > 0) {
+                            od[pi]   = (od[pi]   + r) >> 1;
+                            od[pi+1] = (od[pi+1] + g) >> 1;
+                            od[pi+2] = (od[pi+2] + b) >> 1;
+                        } else {
+                            od[pi] = r; od[pi+1] = g; od[pi+2] = b; od[pi+3] = a;
+                        }
                     }
                 }
                 pixelIdx += cnts[i];
@@ -1137,10 +1160,13 @@
                                         const sx = (col * scale) | 0, sy = (row * scale) | 0;
                                         if (sx < cw && sy < ch) {
                                             const pi = (sy * cw + sx) * 4;
-                                            od[pi] = color.r;
-                                            od[pi+1] = color.g;
-                                            od[pi+2] = color.b;
-                                            od[pi+3] = alphaVal;
+                                            if (od[pi+3] > 0) {
+                                                od[pi]   = (od[pi]   + color.r) >> 1;
+                                                od[pi+1] = (od[pi+1] + color.g) >> 1;
+                                                od[pi+2] = (od[pi+2] + color.b) >> 1;
+                                            } else {
+                                                od[pi] = color.r; od[pi+1] = color.g; od[pi+2] = color.b; od[pi+3] = alphaVal;
+                                            }
                                         }
                                     }
                                 }
@@ -1182,6 +1208,28 @@
                 ctx.drawImage(tc2, 0, 0);
             }
 
+            // ---- Build ownership map for inter-mask boundaries ----
+            let ownerMap = null;
+            if (showMask) {
+                const totalPixels = ow * oh;
+                ownerMap = new Int32Array(totalPixels);
+                for (const ann of anns) {
+                    if (ann.category_id === roiCatId) continue;
+                    const md = decodedMasks[ann.id];
+                    if (!md || !md.cnts) continue;
+                    // Fill ownerMap using RLE runs (fast)
+                    let pixelIdx = 0, v = 0;
+                    for (let i = 0; i < md.cnts.length; i++) {
+                        if (v) {
+                            const end = Math.min(pixelIdx + md.cnts[i], md.h * md.w);
+                            for (let j = pixelIdx; j < end; j++) ownerMap[j] = ann.id;
+                        }
+                        pixelIdx += md.cnts[i];
+                        v = 1 - v;
+                    }
+                }
+            }
+
             // ---- Contours ----
             if (showMask) {
                 for (const ann of anns) {
@@ -1202,7 +1250,7 @@
                     } else if (decodedMasks[ann.id]) {
                         // RLE contour: draw boundary pixels from mask (thicker lineWidth)
                         ctx.lineWidth = 2;
-                        drawMaskContour(ctx, decodedMasks[ann.id], scale, colorStr);
+                        drawMaskContour(ctx, decodedMasks[ann.id], scale, colorStr, ann.id, ownerMap);
                     }
                 }
 
@@ -1211,7 +1259,7 @@
                     if (decodedMasks[selectedAnn.id]) {
                         // Draw thick white contour for selected RLE mask
                         ctx.lineWidth = 3;
-                        drawMaskContour(ctx, decodedMasks[selectedAnn.id], scale, 'rgba(255,255,255,0.9)');
+                        drawMaskContour(ctx, decodedMasks[selectedAnn.id], scale, 'rgba(255,255,255,0.9)', selectedAnn.id, ownerMap);
                     } else if (Array.isArray(selectedAnn.segmentation)) {
                         // Draw thick white contour for selected polygon
                         ctx.strokeStyle = 'rgba(255,255,255,0.9)';
@@ -1304,19 +1352,30 @@
         }
 
         // Draw RLE mask contour on canvas (boundary pixels only)
-        function drawMaskContour(ctx, md, scale, colorStr) {
+        // annId + ownerMap: also draw boundary where neighbor belongs to a different annotation
+        function drawMaskContour(ctx, md, scale, colorStr, annId, ownerMap) {
             const {mask, h, w} = md;
-            // Sample boundary: check every pixel against neighbors
-            // For performance, only check within bbox
             ctx.fillStyle = colorStr;
-            const step = scale < 0.6 ? 2 : 1; // skip pixels if heavily downscaled
+            const step = scale < 0.6 ? 2 : 1;
             for (let col = 0; col < w; col += step) {
                 for (let row = 0; row < h; row += step) {
-                    if (!mask[col * h + row]) continue;
-                    // Check if boundary (any 4-neighbor is 0 or edge)
-                    const isBoundary = col === 0 || row === 0 || col === w-1 || row === h-1 ||
+                    const idx = col * h + row;
+                    if (!mask[idx]) continue;
+                    // Check if boundary: edge of image, neighbor is bg, or neighbor is different annotation
+                    let isBoundary = col === 0 || row === 0 || col === w-1 || row === h-1 ||
                         !mask[(col-1)*h + row] || !mask[(col+1)*h + row] ||
                         !mask[col*h + row-1] || !mask[col*h + row+1];
+                    if (!isBoundary && ownerMap && annId) {
+                        // Also boundary if any neighbor belongs to a different annotation
+                        const left = ownerMap[(col-1)*h + row];
+                        const right = ownerMap[(col+1)*h + row];
+                        const up = ownerMap[col*h + row-1];
+                        const down = ownerMap[col*h + row+1];
+                        isBoundary = (left !== 0 && left !== annId) ||
+                                     (right !== 0 && right !== annId) ||
+                                     (up !== 0 && up !== annId) ||
+                                     (down !== 0 && down !== annId);
+                    }
                     if (isBoundary) {
                         const sx = (col * scale) | 0, sy = (row * scale) | 0;
                         ctx.fillRect(sx, sy, 2, 2);
@@ -1397,6 +1456,7 @@
             ['valBarcode','valShipment','valAnnId','valCatId'].forEach(id =>
                 document.getElementById(id).textContent = '-');
             document.getElementById('memoText').value = '';
+            document.getElementById('btnDelAnn').style.display = 'none';
         }
 
         function showAnnotationInfo(ann) {
@@ -1409,6 +1469,7 @@
             document.getElementById('valCatId').textContent = String(ann.category_id);
             const existing = memos[ann.id];
             document.getElementById('memoText').value = existing ? existing.text : '';
+            document.getElementById('btnDelAnn').style.display = 'block';
         }
 
         function showMissingMode(x, y) {
@@ -1417,6 +1478,34 @@
             ['valBarcode','valShipment','valAnnId','valCatId'].forEach(id =>
                 document.getElementById(id).textContent = '-');
             document.getElementById('memoText').value = '';
+            document.getElementById('btnDelAnn').style.display = 'none';
+        }
+
+        function deleteAnnotation() {
+            if (!selectedAnn) return;
+            const attrs = selectedAnn.attributes || {};
+            const label = catNames[selectedAnn.category_id] || selectedAnn.category_id;
+            const barcode = attrs.barcode ? ` (barcode: ${attrs.barcode})` : '';
+            if (!confirm(`[${label}] ann_id=${selectedAnn.id}${barcode}\n이 어노테이션을 삭제하시겠습니까?`)) return;
+            deletedAnnIds.add(selectedAnn.id);
+            annByImage[selectedAnn.image_id] = annByImage[selectedAnn.image_id].filter(a => a.id !== selectedAnn.id);
+            cocoData.annotations = cocoData.annotations.filter(a => a.id !== selectedAnn.id);
+            delete decodedMasks[selectedAnn.id];
+            selectedAnn = null;
+            clearInfoPanel();
+            renderCurrent();
+            renderImageList();
+            updateDeleteCount();
+        }
+
+        function updateDeleteCount() {
+            const el = document.getElementById('deleteCount');
+            if (deletedAnnIds.size > 0) {
+                el.textContent = `Deleted: ${deletedAnnIds.size}`;
+                el.style.display = '';
+            } else {
+                el.style.display = 'none';
+            }
         }
 
         function copyText(el) {
@@ -1513,6 +1602,16 @@
             const wb = XLSX.utils.book_new();
             XLSX.utils.book_append_sheet(wb, ws, 'review_memos');
             XLSX.writeFile(wb, `review_memos_${new Date().toISOString().slice(0,10)}.xlsx`);
+        }
+
+        function downloadJson() {
+            if (!cocoData) return alert('로드된 데이터가 없습니다.');
+            const blob = new Blob([JSON.stringify(cocoData)], {type: 'application/json'});
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = 'annotations_modified.json';
+            a.click();
+            URL.revokeObjectURL(a.href);
         }
 
         // =================================================================
