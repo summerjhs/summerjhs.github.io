@@ -1,0 +1,1708 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>COCO Review Tool</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', sans-serif;
+            background: #1e1e1e;
+            color: #ccc;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            user-select: none;
+        }
+
+        /* Header */
+        header {
+            background: #2d2d2d;
+            padding: 6px 14px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            border-bottom: 1px solid #444;
+            flex-shrink: 0;
+        }
+
+        header h1 {
+            font-size: 15px;
+            color: #fff;
+            white-space: nowrap;
+        }
+
+        header button {
+            background: #4a6a8a;
+            color: #fff;
+            border: none;
+            padding: 4px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 13px;
+        }
+
+        header button:hover {
+            background: #5a7a9a;
+        }
+
+        header .counter {
+            color: #aaa;
+            font-size: 13px;
+            white-space: nowrap;
+            margin-left: auto;
+        }
+
+        /* Main */
+        .main {
+            flex: 1;
+            display: flex;
+            overflow: hidden;
+        }
+
+        /* Left panel */
+        .left-panel {
+            width: 200px;
+            background: #252525;
+            border-right: 1px solid #444;
+            display: flex;
+            flex-direction: column;
+            flex-shrink: 0;
+        }
+
+        .left-panel h3 {
+            padding: 6px 10px;
+            font-size: 12px;
+            color: #888;
+            border-bottom: 1px solid #333;
+        }
+
+        #searchInput {
+            width: 100%;
+            padding: 5px 10px;
+            background: #2a2a2a;
+            border: none;
+            border-bottom: 1px solid #444;
+            color: #fff;
+            font-size: 12px;
+            outline: none;
+        }
+
+        #searchInput:focus {
+            border-bottom-color: #4a6a8a;
+        }
+
+        #searchInput::placeholder {
+            color: #666;
+        }
+
+        .image-list {
+            flex: 1;
+            overflow-y: auto;
+        }
+
+        .img-item {
+            padding: 4px 10px;
+            font-size: 11px;
+            cursor: pointer;
+            border-bottom: 1px solid #2a2a2a;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .img-item:hover {
+            background: #333;
+        }
+
+        .img-item.active {
+            background: #4a6a8a;
+            color: #fff;
+        }
+
+        .img-item.has-memo {
+            border-left: 3px solid #c44;
+        }
+
+        .ann-badge {
+            background: #555;
+            color: #ccc;
+            padding: 0 5px;
+            border-radius: 8px;
+            font-size: 10px;
+        }
+
+        /* Tree view */
+        .tree-task {
+            padding: 4px 8px;
+            font-size: 11px;
+            font-weight: bold;
+            color: #8ab;
+            cursor: pointer;
+            border-bottom: 1px solid #2a2a2a;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .tree-task:hover {
+            background: #2a3a3a;
+        }
+
+        .tree-task .arrow {
+            color: #666;
+            font-size: 10px;
+            margin-right: 4px;
+        }
+
+        .tree-job {
+            padding: 3px 8px 3px 18px;
+            font-size: 11px;
+            color: #aaa;
+            cursor: pointer;
+            border-bottom: 1px solid #252525;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .tree-job:hover {
+            background: #303030;
+        }
+
+        .tree-job .arrow {
+            color: #666;
+            font-size: 10px;
+            margin-right: 4px;
+        }
+
+        .tree-img {
+            padding: 2px 8px 2px 32px;
+            font-size: 10px;
+            cursor: pointer;
+            border-bottom: 1px solid #222;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            color: #bbb;
+        }
+
+        .tree-img:hover {
+            background: #333;
+        }
+
+        .tree-img.active {
+            background: #4a6a8a;
+            color: #fff;
+        }
+
+        .tree-img.has-memo {
+            border-left: 3px solid #c44;
+        }
+
+        .job-count {
+            background: #444;
+            color: #999;
+            padding: 0 5px;
+            border-radius: 8px;
+            font-size: 9px;
+        }
+
+        /* Mapping info in right panel */
+        .mapping-section {
+            padding: 8px 10px;
+            border-bottom: 1px solid #333;
+            background: #1e2e2e;
+        }
+
+        .mapping-section h3 {
+            font-size: 12px;
+            color: #6a9a8a;
+            margin-bottom: 4px;
+        }
+
+        /* Center */
+        .center-panel {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background: #1a1a1a;
+            position: relative;
+        }
+
+        .canvas-wrap {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .canvas-wrap canvas {
+            max-width: 100%;
+            max-height: 100%;
+            cursor: crosshair;
+        }
+
+        .drop-zone {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: #666;
+            font-size: 16px;
+            pointer-events: none;
+        }
+
+        .drop-zone.active {
+            background: rgba(74, 106, 138, 0.15);
+            border: 2px dashed #4a6a8a;
+            color: #aaa;
+            pointer-events: auto;
+        }
+
+        /* Right panel */
+        .right-panel {
+            width: 280px;
+            background: #252525;
+            border-left: 1px solid #444;
+            display: flex;
+            flex-direction: column;
+            flex-shrink: 0;
+            overflow-y: auto;
+        }
+
+        .info-section,
+        .memo-section,
+        .memo-list-section {
+            padding: 10px;
+            border-bottom: 1px solid #333;
+        }
+
+        .info-section h3,
+        .memo-section h3,
+        .memo-list-section h3 {
+            font-size: 12px;
+            color: #888;
+            margin-bottom: 6px;
+        }
+
+        .info-hint {
+            color: #666;
+            font-size: 12px;
+        }
+
+        .info-category {
+            font-size: 18px;
+            font-weight: bold;
+            color: #fff;
+            margin: 4px 0;
+        }
+
+        .info-row {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            margin: 3px 0;
+        }
+
+        .info-row label {
+            font-size: 11px;
+            color: #888;
+            width: 72px;
+            flex-shrink: 0;
+        }
+
+        .info-row .value {
+            font-family: Consolas, monospace;
+            font-size: 12px;
+            color: #fff;
+            background: #3c3c3c;
+            padding: 1px 6px;
+            border-radius: 3px;
+            flex: 1;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            cursor: pointer;
+        }
+
+        .info-row .value:hover {
+            background: #4c4c4c;
+        }
+
+        /* Memo */
+        .memo-section textarea {
+            width: 100%;
+            height: 60px;
+            background: #3c3c3c;
+            color: #fff;
+            border: 1px solid #555;
+            border-radius: 4px;
+            padding: 6px;
+            font-size: 12px;
+            resize: vertical;
+        }
+
+        .memo-section textarea:focus {
+            outline: none;
+            border-color: #4a6a8a;
+        }
+
+        .memo-buttons {
+            display: flex;
+            gap: 4px;
+            margin-top: 6px;
+        }
+
+        .memo-buttons button {
+            flex: 1;
+            padding: 5px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+
+        .btn-save {
+            background: #4a7a4a;
+            color: #fff;
+        }
+
+        .btn-save:hover {
+            background: #5a8a5a;
+        }
+
+        .btn-delete {
+            background: #7a4a4a;
+            color: #fff;
+        }
+
+        .btn-delete:hover {
+            background: #8a5a5a;
+        }
+
+        .memo-list {
+            max-height: 250px;
+            overflow-y: auto;
+        }
+
+        .memo-item {
+            padding: 4px 6px;
+            font-size: 11px;
+            cursor: pointer;
+            border-bottom: 1px solid #2a2a2a;
+            display: flex;
+            gap: 4px;
+        }
+
+        .memo-item:hover {
+            background: #333;
+        }
+
+        .memo-cat {
+            color: #888;
+            white-space: nowrap;
+        }
+
+        .memo-text {
+            color: #ccc;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            flex: 1;
+        }
+
+        .memo-count {
+            color: #888;
+            font-size: 11px;
+            margin-top: 3px;
+        }
+
+        /* Footer */
+        footer {
+            background: #2d2d2d;
+            padding: 5px 14px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            border-top: 1px solid #444;
+            flex-shrink: 0;
+        }
+
+        footer button {
+            background: #444;
+            color: #fff;
+            border: none;
+            padding: 4px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+
+        footer button:hover {
+            background: #555;
+        }
+
+        footer .btn-export {
+            background: #4a6a8a;
+        }
+
+        footer .btn-export:hover {
+            background: #5a7a9a;
+        }
+
+        footer label {
+            color: #aaa;
+            font-size: 12px;
+            display: flex;
+            align-items: center;
+            gap: 3px;
+            cursor: pointer;
+        }
+
+        footer input[type="checkbox"] {
+            accent-color: #4a6a8a;
+        }
+
+        footer .goto-group {
+            display: flex;
+            align-items: center;
+            gap: 3px;
+        }
+
+        footer .goto-group input {
+            width: 55px;
+            background: #3c3c3c;
+            border: 1px solid #555;
+            color: #fff;
+            padding: 3px 5px;
+            border-radius: 4px;
+            font-size: 12px;
+            text-align: center;
+        }
+
+        footer .spacer {
+            flex: 1;
+        }
+
+        ::-webkit-scrollbar {
+            width: 7px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: #2a2a2a;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #555;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>COCO Review Tool</h1>
+        <button onclick="openFolder()">Open Folder</button>
+        <button onclick="openFiles()">Open Files</button>
+        <button onclick="loadExcel()">Load Excel</button>
+        <div class="counter"><span id="imgCounter">-</span></div>
+    </header>
+
+    <div class="main">
+        <!-- Left Panel -->
+        <div class="left-panel">
+            <h3>이미지 목록</h3>
+            <input
+                type="text"
+                id="searchInput"
+                placeholder="폴더를 드래그하거나 Open 버튼을 클릭하세요"
+                oninput="filterImageList()"
+            />
+            <div id="imageList" class="image-list"></div>
+
+            <div id="mappingSection" style="display:none;">
+                <div class="mapping-section">
+                    <h3>매핑 정보</h3>
+                    <div class="info-row">
+                        <label>task</label>
+                        <div id="valTask" class="value" onclick="copyText(this)">-</div>
+                    </div>
+                    <div class="info-row">
+                        <label>job_id</label>
+                        <div id="valJobId" class="value" onclick="copyText(this)">-</div>
+                    </div>
+                    <div class="info-row">
+                        <label>frame_index</label>
+                        <div id="valFrame" class="value" onclick="copyText(this)">-</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Center Panel -->
+        <div class="center-panel">
+            <div class="canvas-wrap">
+                <canvas id="mainCanvas"></canvas>
+                <div id="dropZone" class="drop-zone">
+                    <div>폴더를 드래그하거나 Open 버튼을 클릭하세요</div>
+                    <div style="font-size: 12px; margin-top: 10px;">이미지 + annotation/ 폴더 포함</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right Panel -->
+        <div class="right-panel">
+            <div class="info-section">
+                <h3>객체 정보</h3>
+                <div class="info-hint" id="infoHint">이미지에서 객체를 클릭하세요</div>
+                <div class="info-category" id="infoCategory"></div>
+                <div class="info-row">
+                    <label>barcode</label>
+                    <div id="valBarcode" class="value" onclick="copyText(this)">-</div>
+                </div>
+                <div class="info-row">
+                    <label>shipment_id</label>
+                    <div id="valShipment" class="value" onclick="copyText(this)">-</div>
+                </div>
+                <div class="info-row">
+                    <label>ann_id</label>
+                    <div id="valAnnId" class="value" onclick="copyText(this)">-</div>
+                </div>
+                <div class="info-row">
+                    <label>category_id</label>
+                    <div id="valCatId" class="value" onclick="copyText(this)">-</div>
+                </div>
+            </div>
+
+            <div class="memo-section">
+                <h3>오류 메모</h3>
+                <textarea id="memoText" placeholder="메모 입력..."></textarea>
+                <div class="memo-buttons">
+                    <button class="btn-save" onclick="saveMemo()">저장</button>
+                    <button class="btn-delete" onclick="deleteMemo()">삭제</button>
+                </div>
+            </div>
+
+            <div class="memo-list-section">
+                <h3>메모 목록</h3>
+                <div class="memo-list" id="memoList"></div>
+                <div class="memo-count" id="memoCount">0 memos</div>
+            </div>
+        </div>
+    </div>
+
+    <footer>
+        <button onclick="navigate(-1)">← Prev</button>
+        <button onclick="navigate(1)">Next →</button>
+        <div class="goto-group">
+            <span>Go to:</span>
+            <input type="number" id="gotoInput" value="1" onchange="gotoImage()" />
+        </div>
+        <div class="spacer"></div>
+        <label><input type="checkbox" id="chkRoi" checked /> ROI</label>
+        <label><input type="checkbox" id="chkMask" checked /> Mask</label>
+        <label><input type="checkbox" id="chkLabel" checked /> Label</label>
+        <button class="btn-export" onclick="exportXlsx()">Export XLSX</button>
+    </footer>
+
+    <script>
+        // =================================================================
+        // State
+        // =================================================================
+        let imageFiles = {}; // filename -> File object
+        let cocoData = null; // parsed COCO JSON
+        let imageList = []; // sorted [{id, file_name, width, height}]
+        let annByImage = {}; // image_id -> [ann, ...]
+        let catNames = {}; // cat_id -> name
+        let catColors = {}; // cat_id -> {r,g,b}
+        let roiCatId = null;
+        let currentIdx = -1;
+        let currentImage = null; // HTMLImageElement
+        let decodedMasks = {}; // ann_id -> Uint8Array (for current image)
+        let selectedAnn = null;
+        let clickXY = null;
+        let memos = {}; // key -> {ann_id, image_id, image_file, category, barcode, shipment_id, text, type, click_xy, frame_index}
+        let excelMapping = null; // {byImage: {filename -> {task, job_id, frame_index}}, tasks: {task -> {jobs: {job_id -> [{file_name, frame_index}]}}}}
+        let treeState = {}; // "task" or "task/job" -> true (expanded)
+
+        // Default category colors
+        const DEFAULT_COLORS = {
+            'item': {r:158,g:80,b:194},
+            'roi': {r:225,g:45,b:45},
+            'person': {r:0,g:255,b:0},
+            'bcr': {r:0,g:0,b:255},
+            'tape': {r:255,g:0,b:255},
+            'basket': {r:0,g:255,b:255},
+            'fresh bag, coupang box': {r:255,g:255,b:0},
+            'ice pack, dry ice': {r:255,g:128,b:0},
+            'bubble wrap': {r:53,g:166,b:167},
+        };
+
+        function hexToRgb(hex) {
+            const h = hex.replace('#','');
+            return {
+                r: parseInt(h.slice(0,2), 16),
+                g: parseInt(h.slice(2,4), 16),
+                b: parseInt(h.slice(4,6), 16)
+            };
+        }
+
+        function generateColor(i, n) {
+            const hue = (i / n) * 360;
+            const s = 0.7, l = 0.5;
+            const c = (1 - Math.abs(2*l - 1)) * s;
+            const x = c * (1 - Math.abs((hue/60)%2 - 1));
+            const m = l - c/2;
+            let r,g,b;
+            if(hue<60){r=c;g=x;b=0}
+            else if(hue<120){r=x;g=c;b=0}
+            else if(hue<180){r=0;g=c;b=x}
+            else if(hue<240){r=0;g=x;b=c}
+            else if(hue<300){r=x;g=0;b=c}
+            else{r=c;g=0;b=x}
+            return {
+                r: Math.round((r+m)*255),
+                g: Math.round((g+m)*255),
+                b: Math.round((b+m)*255)
+            };
+        }
+
+        // Vary a base color by shifting hue/saturation for instance distinction
+        function varyColor(base, index) {
+            if (index === 0) return base;
+            // Convert RGB to HSL, shift hue, adjust saturation
+            const r = base.r/255, g = base.g/255, b = base.b/255;
+            const max = Math.max(r,g,b), min = Math.min(r,g,b);
+            let h, s, l = (max+min)/2;
+            if (max === min) {
+                h = s = 0;
+            } else {
+                const d = max - min;
+                s = l > 0.5 ? d/(2-max-min) : d/(max+min);
+                if (max===r) h = ((g-b)/d + (g<b?6:0))/6;
+                else if (max===g) h = ((b-r)/d + 2)/6;
+                else h = ((r-g)/d + 4)/6;
+            }
+            // Shift hue by index * larger angle for more aggressive differentiation, vary saturation more
+            h = (h + index * 0.218) % 1;
+            s = Math.min(1, Math.max(0.25, s + ((index%5)-2)*0.12));
+            l = Math.min(0.75, Math.max(0.3, l + ((index%2)*0.08 - 0.04)));
+            // HSL to RGB
+            const hue2rgb = (p,q,t) => {
+                if(t<0)t+=1;
+                if(t>1)t-=1;
+                if(t<1/6)return p+(q-p)*6*t;
+                if(t<1/2)return q;
+                if(t<2/3)return p+(q-p)*(2/3-t)*6;
+                return p;
+            };
+            const q = l<0.5 ? l*(1+s) : l+s-l*s, p = 2*l-q;
+            return {
+                r: Math.round(hue2rgb(p,q,h+1/3)*255),
+                g: Math.round(hue2rgb(p,q,h)*255),
+                b: Math.round(hue2rgb(p,q,h-1/3)*255)
+            };
+        }
+
+        // Assign unique colors per instance within each image
+        function assignInstanceColors(anns) {
+            const colors = {}; // ann_id -> {r,g,b}
+            const byCat = {};
+            anns.forEach(ann => {
+                const cid = ann.category_id;
+                if (!byCat[cid]) byCat[cid] = [];
+                byCat[cid].push(ann);
+            });
+            for (const [cid, catAnns] of Object.entries(byCat)) {
+                const base = catColors[cid] || {r:200,g:200,b:200};
+                catAnns.forEach((ann, i) => {
+                    colors[ann.id] = varyColor(base, i);
+                });
+            }
+            return colors;
+        }
+
+        // =================================================================
+        // COCO RLE Decode (faithful port of pycocotools rlelib.c)
+        // =================================================================
+        function rleFrString(counts_str) {
+            // Decode COCO compressed RLE string → run-length counts array
+            const cnts = [];
+            let p = 0;
+            while (p < counts_str.length) {
+                let x = 0, k = 0, more = true;
+                while (more && p < counts_str.length) {
+                    const c = counts_str.charCodeAt(p) - 48;
+                    x |= (c & 0x1f) << (5 * k);
+                    more = (c & 0x20) !== 0;
+                    p++;
+                    k++;
+                }
+                // Sign extension on the last chunk
+                if (k > 0 && ((counts_str.charCodeAt(p - 1) - 48) & 0x10)) {
+                    x |= -(1 << (5 * k));
+                }
+                // Delta decode: cnts[m] += cnts[m-2] for m > 2 (matching pycocotools C code)
+                if (cnts.length > 2) x += cnts[cnts.length - 2];
+                cnts.push(x);
+            }
+            return cnts;
+        }
+
+        function rleToMask(cnts, h, w) {
+            // Convert run-length counts to column-major binary mask
+            const mask = new Uint8Array(h * w);
+            let idx = 0, val = 0;
+            for (let i = 0; i < cnts.length; i++) {
+                const end = Math.min(idx + cnts[i], h * w);
+                if (val) {
+                    for (let j = idx; j < end; j++) mask[j] = 1;
+                }
+                idx = end;
+                val = 1 - val;
+            }
+            return mask;
+        }
+
+        function decodeSegmentation(seg, h, w) {
+            // Returns {mask: Uint8Array (column-major), cnts: number[]} or null
+            if (!seg) return null;
+            if (typeof seg === 'object' && !Array.isArray(seg) && seg.counts) {
+                const sh = seg.size[0], sw = seg.size[1];
+                let cnts;
+                if (typeof seg.counts === 'string') {
+                    cnts = rleFrString(seg.counts);
+                } else {
+                    cnts = seg.counts.slice(); // uncompressed RLE
+                }
+                const mask = rleToMask(cnts, sh, sw);
+                return { mask, h: sh, w: sw, cnts };
+            }
+            return null; // polygon handled separately
+        }
+
+        function getMaskPixel(mask, h, x, y) {
+            // Column-major: pixel at (row=y, col=x) is mask[x*h + y]
+            if (x < 0 || y < 0 || x * h + y >= mask.length) return 0;
+            return mask[x * h + y];
+        }
+
+        // Paint RLE mask runs directly onto RGBA ImageData (fast: skips background runs)
+        function paintMaskOnImageData(od, cnts, mh, mw, canvasW, r, g, b, a) {
+            let pixelIdx = 0, val = 0;
+            for (let i = 0; i < cnts.length; i++) {
+                if (val) {
+                    const end = Math.min(pixelIdx + cnts[i], mh * mw);
+                    for (let j = pixelIdx; j < end; j++) {
+                        // Column-major → (col, row)
+                        const col = (j / mh) | 0;
+                        const row = j % mh;
+                        const pi = (row * canvasW + col) * 4;
+                        od[pi] = r;
+                        od[pi+1] = g;
+                        od[pi+2] = b;
+                        od[pi+3] = a;
+                    }
+                }
+                pixelIdx += cnts[i];
+                val = 1 - val;
+            }
+        }
+
+        // =================================================================
+        // File loading
+        // =================================================================
+        async function openFolder() {
+            if (!window.showDirectoryPicker) {
+                alert('이 브라우저는 폴더 열기를 지원하지 않습니다.\nChrome 또는 Edge를 사용해주세요.\n\n대안: "Open Files" 버튼으로 파일을 직접 선택하세요.');
+                return;
+            }
+            try {
+                const dirHandle = await window.showDirectoryPicker();
+                await loadFromDirectoryHandle(dirHandle);
+            } catch(e) {
+                if (e.name !== 'AbortError') console.error(e);
+            }
+        }
+
+        function openFiles() {
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.webkitdirectory = true;
+            input.multiple = true;
+            input.onchange = async () => {
+                if (!input.files.length) return;
+                await loadFromFileList(input.files);
+            };
+            input.click();
+        }
+
+        async function loadFromDirectoryHandle(dirHandle) {
+            imageFiles = {};
+            let jsonFile = null;
+            let catJsonFile = null;
+            async function scan(handle, path) {
+                for await (const [name, entry] of handle.entries()) {
+                    const fullPath = path ? path + '/' + name : name;
+                    if (entry.kind === 'file') {
+                        const lower = name.toLowerCase();
+                        if (lower.endsWith('.jpg') || lower.endsWith('.jpeg') || lower.endsWith('.png')) {
+                            imageFiles[name] = await entry.getFile();
+                        } else if (lower.endsWith('.json') && !lower.endsWith('.bak')) {
+                            if (path && (path.includes('annotation') || path.includes('annotations'))) {
+                                if (!jsonFile) jsonFile = await entry.getFile();
+                            } else if (lower === 'categories_logistics.json') {
+                                catJsonFile = await entry.getFile();
+                            } else if (!jsonFile && !path) {
+                                // JSON in root as fallback
+                                jsonFile = await entry.getFile();
+                            }
+                        }
+                    } else if (entry.kind === 'directory') {
+                        await scan(entry, fullPath);
+                    }
+                }
+            }
+            await scan(dirHandle, '');
+            if (!jsonFile) {
+                alert('annotation JSON을 찾을 수 없습니다.');
+                return;
+            }
+            const jsonText = await jsonFile.text();
+            cocoData = JSON.parse(jsonText);
+            if (catJsonFile) {
+                try {
+                    const catData = JSON.parse(await catJsonFile.text());
+                    catData.forEach(c => {
+                        if (c.color) DEFAULT_COLORS[c.name.toLowerCase()] = hexToRgb(c.color);
+                    });
+                } catch(e) {}
+            }
+            initDataset();
+        }
+
+        async function loadFromFileList(files) {
+            imageFiles = {};
+            let jsonFile = null;
+            for (const f of files) {
+                const path = f.webkitRelativePath || f.name;
+                const name = path.split('/').pop();
+                const lower = name.toLowerCase();
+                if (lower.endsWith('.jpg') || lower.endsWith('.jpeg') || lower.endsWith('.png')) {
+                    imageFiles[name] = f;
+                } else if (lower.endsWith('.json') && !lower.endsWith('.bak')) {
+                    if (path.includes('annotation')) {
+                        if (!jsonFile) jsonFile = f;
+                    } else if (!jsonFile) {
+                        jsonFile = f;
+                    }
+                }
+            }
+            if (!jsonFile) {
+                alert('annotation JSON을 찾을 수 없습니다.');
+                return;
+            }
+            const jsonText = await jsonFile.text();
+            cocoData = JSON.parse(jsonText);
+            initDataset();
+        }
+
+        // Drag & drop
+        const dropZone = document.getElementById('dropZone');
+        document.body.addEventListener('dragover', e => {
+            e.preventDefault();
+            dropZone.classList.add('active');
+        });
+        document.body.addEventListener('dragleave', e => {
+            if(!e.relatedTarget||!document.body.contains(e.relatedTarget)) dropZone.classList.remove('active');
+        });
+        document.body.addEventListener('drop', async e => {
+            e.preventDefault();
+            dropZone.classList.remove('active');
+            const items = e.dataTransfer.items;
+            if (items && items[0] && items[0].getAsFileSystemHandle) {
+                const handle = await items[0].getAsFileSystemHandle();
+                if (handle.kind === 'directory') {
+                    await loadFromDirectoryHandle(handle);
+                    return;
+                }
+            }
+            if (e.dataTransfer.files.length) await loadFromFileList(e.dataTransfer.files);
+        });
+
+        // =================================================================
+        // Dataset init
+        // =================================================================
+        function initDataset() {
+            if (!cocoData) return;
+            // Categories
+            catNames = {};
+            catColors = {};
+            roiCatId = null;
+            (cocoData.categories || []).forEach((cat, i) => {
+                catNames[cat.id] = cat.name;
+                const nameL = cat.name.toLowerCase();
+                if (nameL === 'roi') roiCatId = cat.id;
+                catColors[cat.id] = DEFAULT_COLORS[nameL] || generateColor(i, cocoData.categories.length);
+            });
+            // Images
+            imageList = (cocoData.images || []).slice().sort((a,b) => (a.file_name||'').localeCompare(b.file_name||''));
+            // Annotations by image
+            annByImage = {};
+            (cocoData.annotations || []).forEach(ann => {
+                if (!annByImage[ann.image_id]) annByImage[ann.image_id] = [];
+                annByImage[ann.image_id].push(ann);
+            });
+            memos = {};
+            currentIdx = -1;
+            selectedAnn = null;
+            document.getElementById('dropZone').style.display = 'none';
+            renderImageList();
+            goToIndex(0);
+        }
+
+        // =================================================================
+        // Image list
+        // =================================================================
+        function renderImageList(filter) {
+            if (excelMapping) {
+                renderTreeView(filter);
+                return;
+            }
+            const list = document.getElementById('imageList');
+            list.innerHTML = '';
+            const memoImageIds = new Set(Object.values(memos).map(m => m.image_id));
+            const query = (filter || '').toLowerCase();
+            imageList.forEach((img, i) => {
+                if (query && !img.file_name.toLowerCase().includes(query)) return;
+                const el = document.createElement('div');
+                el.className = 'img-item' + (i === currentIdx ? ' active' : '');
+                el.dataset.idx = i;
+                if (memoImageIds.has(img.id)) el.classList.add('has-memo');
+                const cnt = (annByImage[img.id] || []).length;
+                const name = img.file_name.length > 24 ? '...' + img.file_name.slice(-24) : img.file_name;
+                el.innerHTML = `<span title="${img.file_name}">${name}</span><span class="ann-badge">${cnt}</span>`;
+                el.onclick = () => goToIndex(i);
+                list.appendChild(el);
+            });
+        }
+
+        function filterImageList() {
+            const query = document.getElementById('searchInput').value;
+            renderImageList(query);
+        }
+
+        function updateActiveItem() {
+            // Works for both flat list (.img-item) and tree view (.tree-img)
+            document.querySelectorAll('[data-idx]').forEach(el => {
+                el.classList.toggle('active', parseInt(el.dataset.idx) === currentIdx);
+            });
+            const active = document.querySelector('.active[data-idx]');
+            if (active) active.scrollIntoView({block: 'nearest'});
+        }
+
+        // =================================================================
+        // Navigation
+        // =================================================================
+        function goToIndex(idx) {
+            if (idx < 0 || idx >= imageList.length) return;
+            currentIdx = idx;
+            selectedAnn = null;
+            clickXY = null;
+            clearInfoPanel();
+            loadAndRender();
+            updateActiveItem();
+            updateCounter();
+            updateMappingInfo();
+            document.getElementById('gotoInput').value = idx + 1;
+        }
+
+        function navigate(d) {
+            goToIndex(currentIdx + d);
+        }
+
+        function gotoImage() {
+            goToIndex(parseInt(document.getElementById('gotoInput').value) - 1);
+        }
+
+        function updateCounter() {
+            document.getElementById('imgCounter').textContent = currentIdx >= 0 ?
+                `${currentIdx+1} / ${imageList.length} ${imageList[currentIdx].file_name}` : '-';
+        }
+
+        // =================================================================
+        // Load image & render
+        // =================================================================
+        async function loadAndRender() {
+            if (currentIdx < 0) return;
+            const imgInfo = imageList[currentIdx];
+            const file = imageFiles[imgInfo.file_name];
+            if (!file) {
+                drawText('이미지 파일 없음: ' + imgInfo.file_name);
+                return;
+            }
+            const url = URL.createObjectURL(file);
+            const img = new Image();
+            img.onload = () => {
+                URL.revokeObjectURL(url);
+                currentImage = img;
+                decodeMasksForImage(imgInfo);
+                renderCurrent();
+            };
+            img.onerror = () => {
+                URL.revokeObjectURL(url);
+                drawText('이미지 로드 실패');
+            };
+            img.src = url;
+        }
+
+        function decodeMasksForImage(imgInfo) {
+            decodedMasks = {}; // ann_id -> {mask, h, w, cnts}
+            const anns = annByImage[imgInfo.id] || [];
+            for (const ann of anns) {
+                if (ann.category_id === roiCatId) continue;
+                try {
+                    const decoded = decodeSegmentation(ann.segmentation, imgInfo.height, imgInfo.width);
+                    if (decoded) decodedMasks[ann.id] = decoded;
+                } catch(e) {
+                    console.warn('Mask decode error ann', ann.id, e);
+                }
+            }
+        }
+
+        // =================================================================
+        // Canvas rendering
+        // =================================================================
+        const MAX_CANVAS = 1920; // cap resolution for performance
+        function renderCurrent() {
+            if (!currentImage || currentIdx < 0) return;
+            const imgInfo = imageList[currentIdx];
+            const canvas = document.getElementById('mainCanvas');
+            const ctx = canvas.getContext('2d');
+            const ow = imgInfo.width, oh = imgInfo.height;
+            // Cap canvas size for performance (scale down if needed)
+            let scale = 1;
+            if (ow > MAX_CANVAS || oh > MAX_CANVAS) scale = Math.min(MAX_CANVAS / ow, MAX_CANVAS / oh);
+            const cw = Math.round(ow * scale), ch = Math.round(oh * scale);
+            canvas.width = cw;
+            canvas.height = ch;
+            ctx.drawImage(currentImage, 0, 0, cw, ch);
+
+            const showRoi = document.getElementById('chkRoi').checked;
+            const showMask = document.getElementById('chkMask').checked;
+            const showLabel = document.getElementById('chkLabel').checked;
+            const anns = annByImage[imgInfo.id] || [];
+            const alphaVal = Math.round(0.35 * 255);
+            const errorIds = new Set();
+            for (const [k, m] of Object.entries(memos)) {
+                if (m.image_id === imgInfo.id && m.type !== 'missing') errorIds.add(m.ann_id);
+            }
+
+            // Assign per-instance colors
+            const instColors = assignInstanceColors(anns);
+
+            // ---- Mask overlay ----
+            if (showMask) {
+                const overlay = ctx.createImageData(cw, ch);
+                const od = overlay.data;
+                for (const ann of anns) {
+                    if (ann.category_id === roiCatId) continue;
+                    const color = instColors[ann.id] || catColors[ann.category_id] || {r:200,g:200,b:200};
+                    const md = decodedMasks[ann.id];
+                    if (md && md.cnts) {
+                        // RLE: paint directly from run-length counts (fast, skips bg runs)
+                        if (scale === 1) {
+                            paintMaskOnImageData(od, md.cnts, md.h, md.w, cw, color.r, color.g, color.b, alphaVal);
+                        } else {
+                            // Scaled: iterate foreground runs, map to canvas coords
+                            let pixelIdx = 0, val = 0;
+                            for (let i = 0; i < md.cnts.length; i++) {
+                                if (val) {
+                                    const end = Math.min(pixelIdx + md.cnts[i], md.h * md.w);
+                                    for (let j = pixelIdx; j < end; j++) {
+                                        const col = (j / md.h) | 0;
+                                        const row = j % md.h;
+                                        const sx = (col * scale) | 0, sy = (row * scale) | 0;
+                                        if (sx < cw && sy < ch) {
+                                            const pi = (sy * cw + sx) * 4;
+                                            od[pi] = color.r;
+                                            od[pi+1] = color.g;
+                                            od[pi+2] = color.b;
+                                            od[pi+3] = alphaVal;
+                                        }
+                                    }
+                                }
+                                pixelIdx += md.cnts[i];
+                                val = 1 - val;
+                            }
+                        }
+                    } else if (Array.isArray(ann.segmentation)) {
+                        // Polygon: draw on temp canvas
+                        const tc = document.createElement('canvas');
+                        tc.width = cw;
+                        tc.height = ch;
+                        const tctx = tc.getContext('2d');
+                        tctx.fillStyle = `rgba(${color.r},${color.g},${color.b},0.35)`;
+                        for (const poly of ann.segmentation) {
+                            if (poly.length < 6) continue;
+                            tctx.beginPath();
+                            tctx.moveTo(poly[0]*scale, poly[1]*scale);
+                            for (let i = 2; i < poly.length; i += 2) tctx.lineTo(poly[i]*scale, poly[i+1]*scale);
+                            tctx.closePath();
+                            tctx.fill();
+                        }
+                        const td = tctx.getImageData(0, 0, cw, ch).data;
+                        for (let i = 0; i < td.length; i += 4) {
+                            if (td[i+3] > 0) {
+                                od[i]=td[i];
+                                od[i+1]=td[i+1];
+                                od[i+2]=td[i+2];
+                                od[i+3]=td[i+3];
+                            }
+                        }
+                    }
+                }
+                // Composite overlay
+                const tc2 = document.createElement('canvas');
+                tc2.width = cw;
+                tc2.height = ch;
+                tc2.getContext('2d').putImageData(overlay, 0, 0);
+                ctx.drawImage(tc2, 0, 0);
+            }
+
+            // ---- Contours ----
+            if (showMask) {
+                for (const ann of anns) {
+                    if (ann.category_id === roiCatId) continue;
+                    const color = instColors[ann.id] || catColors[ann.category_id] || {r:200,g:200,b:200};
+                    const colorStr = `rgb(${color.r},${color.g},${color.b})`;
+                    ctx.strokeStyle = colorStr;
+                    ctx.lineWidth = 1;
+                    if (Array.isArray(ann.segmentation)) {
+                        for (const poly of ann.segmentation) {
+                            if (poly.length < 6) continue;
+                            ctx.beginPath();
+                            ctx.moveTo(poly[0]*scale, poly[1]*scale);
+                            for (let i = 2; i < poly.length; i += 2) ctx.lineTo(poly[i]*scale, poly[i+1]*scale);
+                            ctx.closePath();
+                            ctx.stroke();
+                        }
+                    } else if (decodedMasks[ann.id]) {
+                        // RLE contour: draw boundary pixels from mask (thicker lineWidth)
+                        ctx.lineWidth = 2;
+                        drawMaskContour(ctx, decodedMasks[ann.id], scale, colorStr);
+                    }
+                }
+
+                // ---- Selected annotation highlight ----
+                if (selectedAnn && selectedAnn.category_id !== roiCatId) {
+                    if (decodedMasks[selectedAnn.id]) {
+                        // Draw thick white contour for selected RLE mask
+                        ctx.lineWidth = 3;
+                        drawMaskContour(ctx, decodedMasks[selectedAnn.id], scale, 'rgba(255,255,255,0.9)');
+                    } else if (Array.isArray(selectedAnn.segmentation)) {
+                        // Draw thick white contour for selected polygon
+                        ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+                        ctx.lineWidth = 3;
+                        for (const poly of selectedAnn.segmentation) {
+                            if (poly.length < 6) continue;
+                            ctx.beginPath();
+                            ctx.moveTo(poly[0]*scale, poly[1]*scale);
+                            for (let i = 2; i < poly.length; i += 2) ctx.lineTo(poly[i]*scale, poly[i+1]*scale);
+                            ctx.closePath();
+                            ctx.stroke();
+                        }
+                    }
+                }
+            }
+
+            // ---- Error highlights ----
+            for (const ann of anns) {
+                if (!errorIds.has(ann.id) || !ann.bbox) continue;
+                const [bx,by,bw,bh] = ann.bbox.map(v => v * scale);
+                ctx.strokeStyle = 'red';
+                ctx.lineWidth = 2;
+                ctx.strokeRect(bx, by, bw, bh);
+                ctx.fillStyle = 'red';
+                ctx.font = 'bold 14px sans-serif';
+                ctx.fillText('!', bx+bw-16, by+16);
+            }
+
+            // ---- Labels ----
+            if (showLabel) {
+                for (const ann of anns) {
+                    if (ann.category_id === roiCatId || !ann.bbox) continue;
+                    const color = instColors[ann.id] || catColors[ann.category_id] || {r:200,g:200,b:200};
+                    const colorStr = `rgb(${color.r},${color.g},${color.b})`;
+                    const [bx,by,bw,bh] = ann.bbox;
+                    const cx = (bx+bw/2)*scale, cy = (by+bh/2)*scale;
+                    const catName = catNames[ann.category_id] || String(ann.category_id);
+                    const attrs = ann.attributes || {};
+                    const barcode = attrs.barcode || '', shipment = attrs.shipment_id || '';
+                    ctx.font = '11px sans-serif';
+                    const lines = [];
+                    if (barcode || shipment) {
+                        lines.push(barcode ? `${catName} | ${barcode}` : catName);
+                        if (shipment) lines.push(`ship: ${shipment}`);
+                    } else {
+                        lines.push(catName);
+                    }
+                    lines.forEach((line, li) => {
+                        const tw = ctx.measureText(line).width;
+                        const tx = cx-tw/2, ty = cy-(lines.length-1)*7+li*14;
+                        ctx.fillStyle = 'rgba(0,0,0,0.6)';
+                        ctx.fillRect(tx-2, ty-11, tw+4, 14);
+                        ctx.fillStyle = colorStr;
+                        ctx.fillText(line, tx, ty);
+                    });
+                }
+            }
+
+            // ---- ROI (dashed) ----
+            if (showRoi && roiCatId !== null) {
+                for (const ann of anns) {
+                    if (ann.category_id !== roiCatId || !ann.bbox) continue;
+                    const [bx,by,bw,bh] = ann.bbox.map(v => v*scale);
+                    const rc = catColors[roiCatId] || {r:225,g:45,b:45};
+                    ctx.strokeStyle = `rgb(${rc.r},${rc.g},${rc.b})`;
+                    ctx.lineWidth = 1;
+                    ctx.setLineDash([15,8]);
+                    ctx.strokeRect(bx,by,bw,bh);
+                    ctx.setLineDash([]);
+                    ctx.font = '12px sans-serif';
+                    const tw = ctx.measureText('ROI').width;
+                    ctx.fillStyle = 'rgba(0,0,0,0.6)';
+                    ctx.fillRect(bx+4,by+4,tw+6,16);
+                    ctx.fillStyle = `rgb(${rc.r},${rc.g},${rc.b})`;
+                    ctx.fillText('ROI', bx+7, by+16);
+                }
+            }
+
+            // ---- HUD ----
+            ctx.font = '12px sans-serif';
+            const hud = `[${currentIdx+1}/${imageList.length}] ${imgInfo.file_name} (${anns.length} ann)`;
+            const tw = ctx.measureText(hud).width;
+            ctx.fillStyle = 'rgba(0,0,0,0.7)';
+            ctx.fillRect(4,4,tw+10,18);
+            ctx.fillStyle = '#fff';
+            ctx.fillText(hud, 9, 17);
+
+            // Store scale for hit test
+            canvas._renderScale = scale;
+        }
+
+        // Draw RLE mask contour on canvas (boundary pixels only)
+        function drawMaskContour(ctx, md, scale, colorStr) {
+            const {mask, h, w} = md;
+            // Sample boundary: check every pixel against neighbors
+            // For performance, only check within bbox
+            ctx.fillStyle = colorStr;
+            const step = scale < 0.6 ? 2 : 1; // skip pixels if heavily downscaled
+            for (let col = 0; col < w; col += step) {
+                for (let row = 0; row < h; row += step) {
+                    if (!mask[col * h + row]) continue;
+                    // Check if boundary (any 4-neighbor is 0 or edge)
+                    const isBoundary = col === 0 || row === 0 || col === w-1 || row === h-1 ||
+                        !mask[(col-1)*h + row] || !mask[(col+1)*h + row] ||
+                        !mask[col*h + row-1] || !mask[col*h + row+1];
+                    if (isBoundary) {
+                        const sx = (col * scale) | 0, sy = (row * scale) | 0;
+                        ctx.fillRect(sx, sy, 2, 2);
+                    }
+                }
+            }
+        }
+
+        function drawText(msg) {
+            const canvas = document.getElementById('mainCanvas');
+            const ctx = canvas.getContext('2d');
+            canvas.width = 800;
+            canvas.height = 400;
+            ctx.fillStyle = '#1a1a1a';
+            ctx.fillRect(0,0,800,400);
+            ctx.fillStyle = '#666';
+            ctx.font = '18px sans-serif';
+            ctx.fillText(msg, 50, 200);
+        }
+
+        // =================================================================
+        // Click → Hit test
+        // =================================================================
+        document.getElementById('mainCanvas').addEventListener('click', e => {
+            if (currentIdx < 0) return;
+            const canvas = e.target;
+            const rect = canvas.getBoundingClientRect();
+            // Map click to canvas coords, then to original image coords
+            const renderScale = canvas._renderScale || 1;
+            const dispScaleX = canvas.width / rect.width;
+            const dispScaleY = canvas.height / rect.height;
+            const canvasX = (e.clientX - rect.left) * dispScaleX;
+            const canvasY = (e.clientY - rect.top) * dispScaleY;
+            const x = Math.round(canvasX / renderScale);
+            const y = Math.round(canvasY / renderScale);
+            const imgInfo = imageList[currentIdx];
+
+            // Find hit annotation (smallest area first)
+            const anns = (annByImage[imgInfo.id] || [])
+                .filter(a => a.category_id !== roiCatId)
+                .sort((a, b) => (a.area || Infinity) - (b.area || Infinity));
+            let hit = null;
+            for (const ann of anns) {
+                const md = decodedMasks[ann.id];
+                if (md && md.mask) {
+                    if (getMaskPixel(md.mask, md.h, x, y)) {
+                        hit = ann;
+                        break;
+                    }
+                } else if (ann.bbox) {
+                    const [bx, by, bw, bh] = ann.bbox;
+                    if (x >= bx && x <= bx+bw && y >= by && y <= by+bh) {
+                        hit = ann;
+                        break;
+                    }
+                }
+            }
+
+            if (hit) {
+                selectedAnn = hit;
+                clickXY = null;
+                showAnnotationInfo(hit);
+                renderCurrent();
+            } else {
+                selectedAnn = null;
+                clickXY = {x, y};
+                showMissingMode(x, y);
+                renderCurrent();
+            }
+        });
+
+        // =================================================================
+        // Info panel
+        // =================================================================
+        function clearInfoPanel() {
+            document.getElementById('infoHint').textContent = '이미지에서 객체를 클릭하세요';
+            document.getElementById('infoCategory').textContent = '';
+            ['valBarcode','valShipment','valAnnId','valCatId'].forEach(id =>
+                document.getElementById(id).textContent = '-');
+            document.getElementById('memoText').value = '';
+        }
+
+        function showAnnotationInfo(ann) {
+            const attrs = ann.attributes || {};
+            document.getElementById('infoHint').textContent = '';
+            document.getElementById('infoCategory').textContent = catNames[ann.category_id] || String(ann.category_id);
+            document.getElementById('valBarcode').textContent = attrs.barcode || '-';
+            document.getElementById('valShipment').textContent = attrs.shipment_id || '-';
+            document.getElementById('valAnnId').textContent = String(ann.id);
+            document.getElementById('valCatId').textContent = String(ann.category_id);
+            const existing = memos[ann.id];
+            document.getElementById('memoText').value = existing ? existing.text : '';
+        }
+
+        function showMissingMode(x, y) {
+            document.getElementById('infoHint').textContent = `클릭: (${x}, ${y})`;
+            document.getElementById('infoCategory').textContent = '(missing object)';
+            ['valBarcode','valShipment','valAnnId','valCatId'].forEach(id =>
+                document.getElementById(id).textContent = '-');
+            document.getElementById('memoText').value = '';
+        }
+
+        function copyText(el) {
+            const t = el.textContent;
+            if (t && t !== '-') navigator.clipboard.writeText(t);
+        }
+
+        // =================================================================
+        // Memo CRUD
+        // =================================================================
+        function saveMemo() {
+            const text = document.getElementById('memoText').value.trim();
+            if (!text) return alert('메모 내용을 입력하세요.');
+            if (currentIdx < 0) return;
+            const imgInfo = imageList[currentIdx];
+            if (selectedAnn) {
+                const attrs = selectedAnn.attributes || {};
+                memos[selectedAnn.id] = {
+                    ann_id: selectedAnn.id,
+                    image_id: imgInfo.id,
+                    image_file: imgInfo.file_name,
+                    category: catNames[selectedAnn.category_id] || '',
+                    barcode: attrs.barcode || '',
+                    shipment_id: attrs.shipment_id || '',
+                    text,
+                    type: 'annotation',
+                    frame_index: currentIdx,
+                    bbox: selectedAnn.bbox
+                };
+            } else if (clickXY) {
+                const key = -(Date.now() % 1000000);
+                memos[key] = {
+                    ann_id: key,
+                    image_id: imgInfo.id,
+                    image_file: imgInfo.file_name,
+                    category: '(missing)',
+                    barcode: '',
+                    shipment_id: '',
+                    text,
+                    type: 'missing',
+                    click_xy: [clickXY.x, clickXY.y],
+                    frame_index: currentIdx
+                };
+            } else return alert('먼저 객체를 클릭하세요.');
+            renderCurrent();
+            refreshMemoList();
+            renderImageList();
+        }
+
+        function deleteMemo() {
+            if (selectedAnn && memos[selectedAnn.id]) {
+                delete memos[selectedAnn.id];
+            }
+            document.getElementById('memoText').value = '';
+            renderCurrent();
+            refreshMemoList();
+            renderImageList();
+        }
+
+        function refreshMemoList() {
+            const list = document.getElementById('memoList');
+            list.innerHTML = '';
+            const sorted = Object.values(memos).sort((a,b) =>
+                a.frame_index - b.frame_index || a.ann_id - b.ann_id);
+            sorted.forEach(m => {
+                const el = document.createElement('div');
+                el.className = 'memo-item';
+                el.innerHTML = `<span class="memo-cat">[${m.category}]</span><span class="memo-text">${esc(m.text)}</span>`;
+                el.title = `${m.image_file}\n${m.text}`;
+                el.onclick = () => {
+                    const idx = imageList.findIndex(img => img.id === m.image_id);
+                    if (idx >= 0) goToIndex(idx);
+                };
+                list.appendChild(el);
+            });
+            document.getElementById('memoCount').textContent = `${sorted.length} memos`;
+        }
+
+        // =================================================================
+        // Export XLSX
+        // =================================================================
+        function exportXlsx() {
+            const sorted = Object.values(memos).sort((a,b) =>
+                a.frame_index - b.frame_index || a.ann_id - b.ann_id);
+            if (!sorted.length) return alert('저장된 메모가 없습니다.');
+            const rows = [['No','frame_index','file_name','category','annotation_id','barcode','shipment_id','error_description']];
+            sorted.forEach((m, i) => {
+                rows.push([i+1, m.frame_index, m.image_file, m.category, m.ann_id, m.barcode, m.shipment_id, m.text]);
+            });
+            const ws = XLSX.utils.aoa_to_sheet(rows);
+            ws['!cols'] = [
+                {wch:5}, {wch:10}, {wch:55}, {wch:18}, {wch:12}, {wch:18}, {wch:22}, {wch:40}
+            ];
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, 'review_memos');
+            XLSX.writeFile(wb, `review_memos_${new Date().toISOString().slice(0,10)}.xlsx`);
+        }
+
+        // =================================================================
+        // Keyboard
+        // =================================================================
+        document.addEventListener('keydown', e => {
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
+                if (e.key === 'Escape') e.target.blur();
+                return;
+            }
+            if (e.key === 'ArrowLeft' || e.key === 'a') navigate(-1);
+            else if (e.key === 'ArrowRight' || e.key === 'd') navigate(1);
+        });
+        document.addEventListener('keydown', e => {
+            if ((e.ctrlKey||e.metaKey) && e.key === 's') {
+                e.preventDefault();
+                saveMemo();
+            }
+        });
+
+        // =================================================================
+        // Excel mapping
+        // =================================================================
+        function loadExcel() {
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.accept = '.xlsx,.xls';
+            input.onchange = async () => {
+                if (!input.files.length) return;
+                const buf = await input.files[0].arrayBuffer();
+                const wb = XLSX.read(buf);
+                // Find the mapping sheet
+                const sheetName = wb.SheetNames.find(n => n.toLowerCase().includes('mapping')) || wb.SheetNames[0];
+                const rows = XLSX.utils.sheet_to_json(wb.Sheets[sheetName]);
+                if (!rows.length) {
+                    alert('엑셀에 데이터가 없습니다.');
+                    return;
+                }
+                // Build mapping structure
+                const byImage = {};
+                const tasks = {};
+                for (const row of rows) {
+                    const task = String(row['Tasks'] || row['task'] || row['Task'] || '').trim();
+                    const fileName = String(row['Image name'] || row['image_name'] || row['file_name'] || '').trim();
+                    const jobId = Number(row['job_id'] || row['Job_id'] || row['job'] || 0);
+                    const frameIdx = Number(row['frame_index'] || row['frame'] || 0);
+                    if (!fileName) continue;
+                    byImage[fileName] = { task, job_id: jobId, frame_index: frameIdx };
+                    if (!tasks[task]) tasks[task] = { jobs: {} };
+                    if (!tasks[task].jobs[jobId]) tasks[task].jobs[jobId] = [];
+                    tasks[task].jobs[jobId].push({ file_name: fileName, frame_index: frameIdx });
+                }
+                // Sort frames within each job
+                for (const t of Object.values(tasks)) {
+                    for (const jobId of Object.keys(t.jobs)) {
+                        t.jobs[jobId].sort((a, b) => a.frame_index - b.frame_index);
+                    }
+                }
+                excelMapping = { byImage, tasks };
+                treeState = {};
+                document.getElementById('mappingSection').style.display = '';
+                document.getElementById('searchInput').placeholder = 'task / job_id / 이미지 검색...';
+                renderImageList();
+                updateMappingInfo();
+                alert(`엑셀 로드 완료: ${Object.keys(tasks).length} tasks, ${rows.length} images`);
+            };
+            input.click();
+        }
+
+        function renderTreeView(filter) {
+            const list = document.getElementById('imageList');
+            list.innerHTML = '';
+            if (!excelMapping) return;
+            const query = (filter || '').toLowerCase();
+            const memoImageIds = new Set(Object.values(memos).map(m => m.image_id));
+            const imgIdx = {}; // filename -> index in imageList
+            imageList.forEach((img, i) => {
+                imgIdx[img.file_name] = i;
+            });
+
+            for (const [taskName, taskData] of Object.entries(excelMapping.tasks).sort((a,b) =>
+                a[0].localeCompare(b[0]))) {
+                const jobEntries = Object.entries(taskData.jobs).sort((a,b) =>
+                    Number(a[0]) - Number(b[0]));
+
+                // Check if any image in this task matches the filter
+                let taskHasMatch = false;
+                if (query) {
+                    if (taskName.toLowerCase().includes(query)) {
+                        taskHasMatch = true;
+                    } else {
+                        for (const [jobId, frames] of jobEntries) {
+                            if (String(jobId).includes(query)) {
+                                taskHasMatch = true;
+                                break;
+                            }
+                            if (frames.some(f => f.file_name.toLowerCase().includes(query))) {
+                                taskHasMatch = true;
+                                break;
+                            }
+                        }
+                    }
+                    if (!taskHasMatch) continue;
+                }
+
+                const taskKey = taskName;
+                const taskExpanded = query ? true : !!treeState[taskKey];
+                const totalImgs = jobEntries.reduce((s, [,f]) => s + f.length, 0);
+
+                // Task header
+                const taskEl = document.createElement('div');
+                taskEl.className = 'tree-task';
+                taskEl.innerHTML = `<span><span class="arrow">${taskExpanded ? '▾' : '▸'}</span>${taskName}</span><span class="job-count">${totalImgs}</span>`;
+                taskEl.onclick = (e) => {
+                    e.stopPropagation();
+                    treeState[taskKey] = !treeState[taskKey];
+                    renderTreeView(filter);
+                };
+                list.appendChild(taskEl);
+
+                if (!taskExpanded) continue;
+
+                for (const [jobId, frames] of jobEntries) {
+                    // Filter jobs
+                    let jobHasMatch = !query || taskName.toLowerCase().includes(query) || String(jobId).includes(query);
+                    if (!jobHasMatch) {
+                        jobHasMatch = frames.some(f => f.file_name.toLowerCase().includes(query));
+                        if (!jobHasMatch) continue;
+                    }
+
+                    const jobKey = `${taskName}/${jobId}`;
+                    const jobExpanded = query ? true : !!treeState[jobKey];
+                    const jobEl = document.createElement('div');
+                    jobEl.className = 'tree-job';
+                    jobEl.innerHTML = `<span><span class="arrow">${jobExpanded ? '▾' : '▸'}</span>Job ${jobId}</span><span class="job-count">${frames.length}</span>`;
+                    jobEl.onclick = (e) => {
+                        e.stopPropagation();
+                        treeState[jobKey] = !treeState[jobKey];
+                        renderTreeView(filter);
+                    };
+                    list.appendChild(jobEl);
+
+                    if (!jobExpanded) continue;
+
+                    for (const frame of frames) {
+                        if (query && !taskName.toLowerCase().includes(query) &&
+                            !String(jobId).includes(query) &&
+                            !frame.file_name.toLowerCase().includes(query)) continue;
+                        const idx = imgIdx[frame.file_name];
+                        if (idx === undefined) continue;
+                        const imgInfo = imageList[idx];
+                        const el = document.createElement('div');
+                        el.className = 'tree-img' + (idx === currentIdx ? ' active' : '');
+                        el.dataset.idx = idx;
+                        if (memoImageIds.has(imgInfo.id)) el.classList.add('has-memo');
+                        const shortName = frame.file_name.length > 20 ?
+                            '...' + frame.file_name.slice(-20) : frame.file_name;
+                        el.innerHTML = `<span title="${frame.file_name}">[${frame.frame_index}] ${shortName}</span>`;
+                        el.onclick = () => goToIndex(idx);
+                        list.appendChild(el);
+                    }
+                }
+            }
+        }
+
+        function updateMappingInfo() {
+            if (!excelMapping || currentIdx < 0) {
+                document.getElementById('valTask').textContent = '-';
+                document.getElementById('valJobId').textContent = '-';
+                document.getElementById('valFrame').textContent = '-';
+                return;
+            }
+            const fileName = imageList[currentIdx].file_name;
+            const info = excelMapping.byImage[fileName];
+            if (info) {
+                document.getElementById('valTask').textContent = info.task || '-';
+                document.getElementById('valJobId').textContent = String(info.job_id) || '-';
+                document.getElementById('valFrame').textContent = String(info.frame_index);
+            } else {
+                document.getElementById('valTask').textContent = '(매핑 없음)';
+                document.getElementById('valJobId').textContent = '-';
+                document.getElementById('valFrame').textContent = '-';
+            }
+        }
+
+        function esc(s) {
+            const d = document.createElement('div');
+            d.textContent = s;
+            return d.innerHTML;
+        }
+    </script>
+</body>
+</html>
