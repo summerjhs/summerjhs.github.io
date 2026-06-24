@@ -1256,17 +1256,26 @@
                 }
 
                 // ---- Inter-mask dividing lines (white) ----
+                // Detect boundaries between different masks, including 1px gap
                 if (ownerMap) {
                     ctx.fillStyle = 'rgba(255,255,255,0.85)';
                     const step = scale < 0.6 ? 2 : 1;
-                    for (let col = 1; col < ow - 1; col += step) {
-                        for (let row = 1; row < oh - 1; row += step) {
-                            const myId = ownerMap[col * oh + row];
+                    const getOwner = (c, r) => (c >= 0 && c < ow && r >= 0 && r < oh) ? ownerMap[c * oh + r] : 0;
+                    // Helper: find nearest non-zero owner within 2px in a direction
+                    const nearbyOwner = (c, r, dc, dr) => {
+                        const o1 = getOwner(c+dc, r+dr);
+                        if (o1) return o1;
+                        return getOwner(c+dc*2, r+dr*2);
+                    };
+                    for (let col = 0; col < ow; col += step) {
+                        for (let row = 0; row < oh; row += step) {
+                            const myId = getOwner(col, row);
                             if (!myId) continue;
-                            const left = ownerMap[(col-1) * oh + row];
-                            const right = ownerMap[(col+1) * oh + row];
-                            const up = ownerMap[col * oh + row - 1];
-                            const down = ownerMap[col * oh + row + 1];
+                            // Check 4 directions: if nearby pixel belongs to different mask
+                            const left = nearbyOwner(col, row, -1, 0);
+                            const right = nearbyOwner(col, row, 1, 0);
+                            const up = nearbyOwner(col, row, 0, -1);
+                            const down = nearbyOwner(col, row, 0, 1);
                             if ((left && left !== myId) || (right && right !== myId) ||
                                 (up && up !== myId) || (down && down !== myId)) {
                                 const sx = (col * scale) | 0, sy = (row * scale) | 0;
@@ -1388,11 +1397,13 @@
                         !mask[(col-1)*h + row] || !mask[(col+1)*h + row] ||
                         !mask[col*h + row-1] || !mask[col*h + row+1];
                     if (!isBoundary && ownerMap && annId) {
-                        // Also boundary if any neighbor belongs to a different annotation
-                        const left = ownerMap[(col-1)*h + row];
-                        const right = ownerMap[(col+1)*h + row];
-                        const up = ownerMap[col*h + row-1];
-                        const down = ownerMap[col*h + row+1];
+                        // Also boundary if nearby pixel (within 2px) belongs to a different annotation
+                        const getO = (c, r) => (c >= 0 && c < w && r >= 0 && r < h) ? ownerMap[c * h + r] : 0;
+                        const nearO = (c, r, dc, dr) => { const o1 = getO(c+dc, r+dr); return o1 || getO(c+dc*2, r+dr*2); };
+                        const left = nearO(col, row, -1, 0);
+                        const right = nearO(col, row, 1, 0);
+                        const up = nearO(col, row, 0, -1);
+                        const down = nearO(col, row, 0, 1);
                         isBoundary = (left !== 0 && left !== annId) ||
                                      (right !== 0 && right !== annId) ||
                                      (up !== 0 && up !== annId) ||
