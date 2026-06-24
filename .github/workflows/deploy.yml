@@ -9,7 +9,7 @@ permissions:
   id-token: write
 concurrency:
   group: pages
-  cancel-in-progress: false
+  cancel-in-progress: true
 jobs:
   deploy:
     environment:
@@ -18,19 +18,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Prepare deploy directory
-        run: |
-          mkdir _site
-          cp -r index.html .nojekyll _site/
-          cp -r coco-review-tool _site/ 2>/dev/null || true
-          cp -r bbox-label-editor _site/ 2>/dev/null || true
-          echo "=== Files to deploy ==="
-          find _site -type f | head -20
-          echo "=== coco-review-tool/index.html size ==="
-          wc -c _site/coco-review-tool/index.html 2>/dev/null || echo "NOT FOUND"
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: '_site'
+          path: '.'
       - id: deployment
         uses: actions/deploy-pages@v4
