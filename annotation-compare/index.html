@@ -414,11 +414,11 @@ async function loadAll() {
 
     srcImgById={}; srcImgByName={};
     for (var i=0;i<srcData.images.length;i++) {
-        var im=srcData.images[i]; srcImgById[im.id]=im; srcImgByName[im.file_name]=im;
+        var im=srcData.images[i]; srcImgById[im.id]=im; srcImgByName[im.file_name.toLowerCase()]=im;
     }
     wrkImgById={}; wrkImgByName={};
     for (var i=0;i<wrkData.images.length;i++) {
-        var im=wrkData.images[i]; wrkImgById[im.id]=im; wrkImgByName[im.file_name]=im;
+        var im=wrkData.images[i]; wrkImgById[im.id]=im; wrkImgByName[im.file_name.toLowerCase()]=im;
     }
     srcCatById={};
     if (srcData.categories) for (var i=0;i<srcData.categories.length;i++) srcCatById[srcData.categories[i].id]=srcData.categories[i];
@@ -442,9 +442,9 @@ async function loadAll() {
     maskCache = {};
 
     var allNames = {};
-    for (var i=0;i<srcData.images.length;i++) allNames[srcData.images[i].file_name]=true;
-    for (var i=0;i<wrkData.images.length;i++) allNames[wrkData.images[i].file_name]=true;
-    imageList = Object.keys(allNames).filter(function(n){return !!imageFiles[n];}).sort();
+    for (var i=0;i<srcData.images.length;i++) allNames[srcData.images[i].file_name.toLowerCase()]=true;
+    for (var i=0;i<wrkData.images.length;i++) allNames[wrkData.images[i].file_name.toLowerCase()]=true;
+    imageList = Object.keys(allNames).filter(function(n){return !!imageFiles[n.toLowerCase()];}).sort();
 
     if (imageList.length === 0) {
         hideLoading();
@@ -466,7 +466,7 @@ async function showImage() {
     document.getElementById('headerCounter').textContent = (currentIdx+1) + ' / ' + imageList.length;
     document.getElementById('footerStatus').textContent = fileName;
 
-    var file = imageFiles[fileName];
+    var file = imageFiles[fileName.toLowerCase()];
     if (!file) return;
 
     showLoading('Loading image...');
@@ -474,8 +474,8 @@ async function showImage() {
     currentImageObj = img;
     hideLoading();
 
-    var srcImg = srcImgByName[fileName];
-    var wrkImg = wrkImgByName[fileName];
+    var srcImg = srcImgByName[fileName.toLowerCase()];
+    var wrkImg = wrkImgByName[fileName.toLowerCase()];
     var srcAnns = srcImg ? (srcByImage[srcImg.id]||[]) : [];
     var wrkAnns = wrkImg ? (wrkByImage[wrkImg.id]||[]) : [];
 
@@ -729,11 +729,11 @@ function updateInfoPanel() {
     var fileName = imageList[currentIdx];
     var ann=null, catById=null;
     if (selectedSide==='source') {
-        var si=srcImgByName[fileName];
+        var si=srcImgByName[fileName.toLowerCase()];
         if (si) { var arr=srcByImage[si.id]||[]; for(var i=0;i<arr.length;i++) if(arr[i].id===selectedAnnId){ann=arr[i];break;} }
         catById=srcCatById;
     } else {
-        var wi=wrkImgByName[fileName];
+        var wi=wrkImgByName[fileName.toLowerCase()];
         if (wi) { var arr=wrkByImage[wi.id]||[]; for(var i=0;i<arr.length;i++) if(arr[i].id===selectedAnnId){ann=arr[i];break;} }
         catById=wrkCatById;
     }
