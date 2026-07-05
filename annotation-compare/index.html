@@ -381,6 +381,19 @@ function getCatColor(catId, catById) {
     return catColors[cat.name] || {r:180,g:180,b:180};
 }
 
+function getInstanceColor(ann, catById, idx) {
+    var base = getCatColor(ann.category_id, catById);
+    var r=base.r/255, g=base.g/255, b=base.b/255;
+    var mx=Math.max(r,g,b), mn=Math.min(r,g,b), d=mx-mn;
+    var h=0, s=mx?d/mx:0, v=mx;
+    if(d){if(mx===r)h=60*(((g-b)/d)%6);else if(mx===g)h=60*((b-r)/d+2);else h=60*((r-g)/d+4);}
+    if(h<0)h+=360;
+    h=(h+idx*37)%360;
+    s=Math.max(0.4,Math.min(1.0,s+(idx%3-1)*0.12));
+    v=Math.max(0.55,Math.min(1.0,v+(idx%2?0.05:-0.05)));
+    return hsvToRgb(h,s,v);
+}
+
 function isROI(catId, catById) {
     var cat = catById[catId];
     return cat ? cat.name.toLowerCase() === 'roi' : false;
@@ -506,22 +519,26 @@ function renderCanvas(canvasId, wrapId, noDataId, img, anns, catById, side) {
     var ctx = canvas.getContext('2d');
     ctx.drawImage(img, 0, 0, cw, ch);
 
-    // Pixel-level mask blending
-    // Iterate canvas pixels and map back to original coords.
-    // RLE mask is column-major: mask[col * h + row] = mask[origX * mh + origY]
+    // Build per-instance colors
+    var instColors = [], _ii = 0;
+    for (var ai=0; ai<anns.length; ai++) {
+        instColors.push(isROI(anns[ai].category_id, catById) ? null : getInstanceColor(anns[ai], catById, _ii++));
+    }
+
+    // Pixel-level mask blending with per-instance colors + inline contours
     var imageData = ctx.getImageData(0, 0, cw, ch);
     var px = imageData.data;
-    var alpha = 0.4;
     var invScale = 1.0 / scale;
 
     for (var ai=0; ai<anns.length; ai++) {
         var ann = anns[ai];
-        if (isROI(ann.category_id, catById)) continue;
+        if (!instColors[ai]) continue;
         var cached = getMask(ann, side);
         if (!cached) continue;
-        var color = getCatColor(ann.category_id, catById);
+        var color = instColors[ai];
         var mask = cached.mask, mh = cached.h, mw = cached.w;
         var cr = color.r, cg = color.g, cb = color.b;
+        var a = (selectedSide === side && selectedAnnId === ann.id) ? 0.62 : 0.42;
 
         for (var cy=0; cy<ch; cy++) {
             var origY = Math.floor(cy * invScale);
@@ -530,36 +547,64 @@ function renderCanvas(canvasId, wrapId, noDataId, img, anns, catById, side) {
             for (var cx=0; cx<cw; cx++) {
                 var origX = Math.floor(cx * invScale);
                 if (origX >= mw) continue;
-                // Column-major index: col * height + row
                 if (mask[origX * mh + origY]) {
                     var pi = (rowOff + cx) * 4;
-                    px[pi]   = px[pi]   + ((cr - px[pi])   * alpha)|0;
-                    px[pi+1] = px[pi+1] + ((cg - px[pi+1]) * alpha)|0;
-                    px[pi+2] = px[pi+2] + ((cb - px[pi+2]) * alpha)|0;
+                    px[pi]   = px[pi]   + ((cr - px[pi])   * a)|0;
+                    px[pi+1] = px[pi+1] + ((cg - px[pi+1]) * a)|0;
+                    px[pi+2] = px[pi+2] + ((cb - px[pi+2]) * a)|0;
+                }
+            }
+        }
+    }
+
+    // Contour outlines drawn into imageData
+    for (var ai=0; ai<anns.length; ai++) {
+        var ann = anns[ai];
+        if (!instColors[ai]) continue;
+        var cached = getMask(ann, side);
+        if (!cached) continue;
+        var mask = cached.mask, mh = cached.h, mw = cached.w;
+        var isSel = (selectedSide === side && selectedAnnId === ann.id);
+        var ec = instColors[ai];
+        var sr = isSel ? 255 : ec.r, sg = isSel ? 215 : ec.g, sb = isSel ? 0 : ec.b;
+        var lw = isSel ? 2 : 1;
+
+        for (var cy=0; cy<ch; cy++) {
+            var oy = Math.floor(cy * invScale);
+            if (oy >= mh) continue;
+            for (var cx=0; cx<cw; cx++) {
+                var ox = Math.floor(cx * invScale);
+                if (ox >= mw) continue;
+                if (!mask[ox*mh+oy]) continue;
+                if ((oy<=0||!mask[ox*mh+(oy-1)]) || (oy>=mh-1||!mask[ox*mh+(oy+1)]) ||
+                    (ox<=0||!mask[(ox-1)*mh+oy]) || (ox>=mw-1||!mask[(ox+1)*mh+oy])) {
+                    for (var dy=-lw;dy<=lw;dy++) {
+                        var py=cy+dy; if(py<0||py>=ch) continue;
+                        for (var dx=-lw;dx<=lw;dx++) {
+                            var px2=cx+dx; if(px2<0||px2>=cw) continue;
+                            var pi=(py*cw+px2)*4;
+                            px[pi]=sr; px[pi+1]=sg; px[pi+2]=sb;
+                        }
+                    }
                 }
             }
         }
     }
     ctx.putImageData(imageData, 0, 0);
 
-    // Vector overlays: contours + ROI boxes
+    // ROI dashed boxes (vector overlay after putImageData)
     for (var ai=0; ai<anns.length; ai++) {
         var ann = anns[ai];
-        if (isROI(ann.category_id, catById)) {
-            var bbox = ann.bbox || computeBboxFromMask(ann, side);
-            if (bbox) {
-                ctx.save();
-                ctx.setLineDash([6, 4]);
-                ctx.strokeStyle = '#FFD700';
-                ctx.lineWidth = 2;
-                ctx.strokeRect(bbox[0]*scale, bbox[1]*scale, bbox[2]*scale, bbox[3]*scale);
-                ctx.restore();
-            }
-            continue;
+        if (!isROI(ann.category_id, catById)) continue;
+        var bbox = ann.bbox || computeBboxFromMask(ann, side);
+        if (bbox) {
+            ctx.save();
+            ctx.setLineDash([6, 4]);
+            ctx.strokeStyle = '#FFD700';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(bbox[0]*scale, bbox[1]*scale, bbox[2]*scale, bbox[3]*scale);
+            ctx.restore();
         }
-        var isSel = (selectedSide === side && selectedAnnId === ann.id);
-        var color = getCatColor(ann.category_id, catById);
-        drawContour(ctx, ann, side, scale, cw, ch, color, isSel);
     }
 
     // Store for click detection
@@ -585,51 +630,7 @@ function computeBboxFromMask(ann, side) {
     return (x1>=x0 && y1>=y0) ? [x0,y0,x1-x0+1,y1-y0+1] : null;
 }
 
-function drawContour(ctx, ann, side, scale, cw, ch, color, isSel) {
-    var cached = getMask(ann, side);
-    if (!cached) return;
-    var mask=cached.mask, h=cached.h, w=cached.w;
-
-    ctx.save();
-    if (isSel) {
-        ctx.strokeStyle = '#FFD700';
-        ctx.lineWidth = 3;
-    } else {
-        ctx.strokeStyle = 'rgb('+color.r+','+color.g+','+color.b+')';
-        ctx.lineWidth = 1.5;
-    }
-    ctx.beginPath();
-
-    var step = scale < 0.5 ? 2 : 1;
-    for (var my=0; my<h; my+=step) {
-        var sy = Math.floor(my*scale);
-        if (sy>=ch) continue;
-        for (var mx=0; mx<w; mx+=step) {
-            if (!mask[mx*h+my]) continue;
-            var top = my>0 ? mask[mx*h+(my-1)] : 0;
-            var bot = my<h-1 ? mask[mx*h+(my+1)] : 0;
-            var lft = mx>0 ? mask[(mx-1)*h+my] : 0;
-            var rgt = mx<w-1 ? mask[(mx+1)*h+my] : 0;
-            if (!top||!bot||!lft||!rgt) {
-                var sx = Math.floor(mx*scale);
-                if (sx>=cw) continue;
-                ctx.rect(sx, sy, Math.max(1,step*scale), Math.max(1,step*scale));
-            }
-        }
-    }
-    ctx.stroke();
-
-    if (isSel) {
-        var bbox = ann.bbox || computeBboxFromMask(ann, side);
-        if (bbox) {
-            ctx.setLineDash([4,3]);
-            ctx.strokeStyle = '#FFD700';
-            ctx.lineWidth = 2;
-            ctx.strokeRect(bbox[0]*scale, bbox[1]*scale, bbox[2]*scale, bbox[3]*scale);
-        }
-    }
-    ctx.restore();
-}
+// drawContour removed (now inline in renderCanvas)
 
 /* ==============================================================
    Click Detection
