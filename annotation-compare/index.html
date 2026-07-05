@@ -90,7 +90,7 @@ footer button:hover { background: #555; }
 .goto-group input { width: 60px; background: #3c3c3c; border: 1px solid #555; color: #fff; padding: 4px 6px; border-radius: 4px; font-size: 13px; text-align: center; }
 .goto-group input:focus { outline: none; border-color: #4a6a8a; }
 footer .spacer { flex: 1; }
-footer .status { color: #888; font-size: 12px; }
+footer .status { color: #8ab; font-size: 12px; } footer .status:hover { color: #adf; text-decoration: underline; }
 
 /* Loading overlay */
 .loading-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; z-index: 1000; }
@@ -202,7 +202,7 @@ footer .status { color: #888; font-size: 12px; }
     <span class="sep" style="color:#555">|</span>
     <button id="btnToggleMask" onclick="toggleMasks()" style="background:#3a6a3a">Mask ON</button>
     <div class="spacer"></div>
-    <span class="status" id="footerStatus"></span>
+    <span class="status" id="footerStatus" style="cursor:pointer" title="클릭하여 파일명 복사" onclick="copyFileName()"></span>
 </footer>
 
 <div class="loading-overlay hidden" id="loadingOverlay">
@@ -462,11 +462,13 @@ async function loadAll() {
     (function() {
         var main = document.querySelector('.main');
         var totalW = main.offsetWidth;
-        var rightW = 320;
-        var divW = 6 * 2; // two dividers
-        var canvasW = Math.floor((totalW - rightW - divW) / 2);
-        document.getElementById('srcPanel').style.width = canvasW + 'px';
-        document.getElementById('wrkPanel').style.width = canvasW + 'px';
+        var divW = 6 * 2;
+        var rightW = Math.floor(totalW * 0.20);
+        var srcW = Math.floor(totalW * 0.25);
+        var wrkW = totalW - srcW - rightW - divW;
+        document.getElementById('srcPanel').style.width = srcW + 'px';
+        document.getElementById('wrkPanel').style.width = wrkW + 'px';
+        document.querySelector('.right-panel').style.width = rightW + 'px';
     })();
 
     showImage();
@@ -476,6 +478,14 @@ async function loadAll() {
 /* ==============================================================
    Image Display & Canvas Rendering
    ============================================================== */
+
+function copyFileName() {
+    var name = document.getElementById('footerStatus').textContent;
+    if (!name) return;
+    navigator.clipboard.writeText(name).then(function() {
+        showToast('파일명 복사됨: ' + name);
+    });
+}
 
 function toggleMasks() {
     showMasks = !showMasks;
