@@ -26,17 +26,19 @@ header button:disabled { background: #444; color: #666; cursor: default; }
 .main { flex: 1; display: flex; overflow: hidden; }
 
 /* Canvas panels */
-.canvas-panel { flex: 1; display: flex; flex-direction: column; min-width: 0; position: relative; }
+.canvas-panel { flex: none; display: flex; flex-direction: column; min-width: 100px; position: relative; overflow: hidden; }
 .canvas-panel .panel-label { background: #2a2a2a; padding: 4px 12px; font-size: 12px; color: #aaa; border-bottom: 1px solid #333; display: flex; align-items: center; gap: 8px; }
 .canvas-panel .panel-label .label-title { font-weight: bold; color: #fff; }
 .canvas-panel .panel-label .ann-count { color: #888; font-size: 11px; }
 .canvas-wrap { flex: 1; display: flex; align-items: center; justify-content: center; overflow: hidden; position: relative; background: #1a1a1a; }
 .canvas-wrap canvas { cursor: crosshair; }
 .canvas-wrap .no-data { color: #555; font-size: 16px; position: absolute; }
-.panel-divider { width: 1px; background: #444; flex-shrink: 0; }
+.panel-divider { width: 6px; background: #333; flex-shrink: 0; cursor: col-resize; position: relative; z-index: 10; }
+.panel-divider:hover, .panel-divider.dragging { background: #4a7aaa; }
+.panel-divider::after { content: ''; position: absolute; top: 50%; left: 1px; width: 4px; height: 30px; transform: translateY(-50%); border-left: 1px solid #666; border-right: 1px solid #666; }
 
 /* Right panel */
-.right-panel { width: 320px; background: #252525; border-left: 1px solid #444; display: flex; flex-direction: column; flex-shrink: 0; overflow: hidden; }
+.right-panel { flex: none; width: 320px; background: #252525; display: flex; flex-direction: column; overflow: hidden; min-width: 150px; }
 .panel-section { padding: 10px 12px; border-bottom: 1px solid #333; }
 .panel-section h3 { font-size: 12px; color: #888; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px; }
 .info-hint { color: #555; font-size: 13px; padding: 8px 0; }
@@ -456,6 +458,17 @@ async function loadAll() {
     }
     currentIdx=0; selectedAnnId=null; selectedSide=null;
     hideLoading();
+    // Set initial panel widths
+    (function() {
+        var main = document.querySelector('.main');
+        var totalW = main.offsetWidth;
+        var rightW = 320;
+        var divW = 6 * 2; // two dividers
+        var canvasW = Math.floor((totalW - rightW - divW) / 2);
+        document.getElementById('srcPanel').style.width = canvasW + 'px';
+        document.getElementById('wrkPanel').style.width = canvasW + 'px';
+    })();
+
     showImage();
     showToast(imageList.length + ' images loaded');
 }
@@ -905,6 +918,55 @@ function gotoImage() {
     showImage();
     document.getElementById('gotoInput').value='';
 }
+
+
+/* ==============================================================
+   Panel Resizer (drag dividers to resize)
+   ============================================================== */
+(function() {
+    var dividers = document.querySelectorAll('.panel-divider');
+    dividers.forEach(function(div) {
+        div.addEventListener('mousedown', function(e) {
+            e.preventDefault();
+            var main = document.querySelector('.main');
+            var panels = [];
+            var children = main.children;
+            for (var i = 0; i < children.length; i++) panels.push(children[i]);
+
+            var divIdx = panels.indexOf(div);
+            var leftPanel = panels[divIdx - 1];
+            var rightPanel = panels[divIdx + 1];
+            if (!leftPanel || !rightPanel) return;
+
+            div.classList.add('dragging');
+            var startX = e.clientX;
+            var leftW = leftPanel.offsetWidth;
+            var rightW = rightPanel.offsetWidth;
+
+            function onMove(ev) {
+                var dx = ev.clientX - startX;
+                var newLeft = Math.max(100, leftW + dx);
+                var newRight = Math.max(100, rightW - dx);
+                // Clamp so total doesn't exceed available
+                if (newLeft + newRight > leftW + rightW) {
+                    if (dx > 0) newRight = leftW + rightW - newLeft;
+                    else newLeft = leftW + rightW - newRight;
+                }
+                leftPanel.style.width = newLeft + 'px';
+                rightPanel.style.width = newRight + 'px';
+            }
+            function onUp() {
+                div.classList.remove('dragging');
+                document.removeEventListener('mousemove', onMove);
+                document.removeEventListener('mouseup', onUp);
+                // Re-render canvases after resize
+                if (imageList.length) showImage();
+            }
+            document.addEventListener('mousemove', onMove);
+            document.addEventListener('mouseup', onUp);
+        });
+    });
+})();
 
 document.addEventListener('keydown', function(e) {
     if (e.target.tagName==='INPUT'||e.target.tagName==='TEXTAREA') {
