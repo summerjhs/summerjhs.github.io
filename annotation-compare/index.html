@@ -281,32 +281,28 @@ function checkReady() {
 /* ==============================================================
    RLE Decode (COCO compressed RLE)
    ============================================================== */
-function rleFrString(s) {
-    // Decode COCO compressed RLE string to run-length counts array.
-    // Matches pycocotools C implementation exactly.
+function rleFrString(counts_str) {
     var cnts = [];
     var p = 0;
-    while (p < s.length) {
+    while (p < counts_str.length) {
         var x = 0, k = 0, more = true;
-        while (more) {
-            var c = s.charCodeAt(p) - 48;
+        while (more && p < counts_str.length) {
+            var c = counts_str.charCodeAt(p) - 48;
             x |= (c & 0x1f) << (5 * k);
             more = (c & 0x20) !== 0;
-            p++; k++;
+            p++;
+            k++;
         }
-        // Sign extension on the last chunk
-        if (k > 0 && ((s.charCodeAt(p - 1) - 48) & 0x10)) {
+        if (k > 0 && ((counts_str.charCodeAt(p - 1) - 48) & 0x10)) {
             x |= -(1 << (5 * k));
         }
-        // Delta decode: cnts[m] += cnts[m-2] for m >= 2
-        if (cnts.length >= 2) x += cnts[cnts.length - 2];
+        if (cnts.length > 2) x += cnts[cnts.length - 2];
         cnts.push(x);
     }
     return cnts;
 }
 
 function rleToMask(cnts, h, w) {
-    // Convert run-length counts to column-major binary mask
     var mask = new Uint8Array(h * w);
     var idx = 0, val = 0;
     for (var i = 0; i < cnts.length; i++) {
@@ -334,10 +330,10 @@ function getMask(ann, side) {
     var key = side + '_' + ann.id;
     if (maskCache[key]) return maskCache[key];
     if (!ann.segmentation || !ann.segmentation.counts) return null;
-    var rle = ann.segmentation;
-    var h = rle.size[0], w = rle.size[1];
+    var seg = ann.segmentation;
+    var h = seg.size[0], w = seg.size[1];
     try {
-        var mask = decodeRLE(rle, h, w);
+        var mask = decodeRLE(seg, h, w);
     } catch(e) { return null; }
     if (Object.keys(maskCache).length > MASK_CACHE_LIMIT) {
         var ks = Object.keys(maskCache);
