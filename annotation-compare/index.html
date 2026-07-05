@@ -915,6 +915,7 @@ document.addEventListener('keydown', function(e) {
         case 'a': case 'A': case 'ArrowLeft': prevImage(); e.preventDefault(); break;
         case 'd': case 'D': case 'ArrowRight': nextImage(); e.preventDefault(); break;
         case 'Escape': selectedAnnId=null; selectedSide=null; if(imageList.length) showImage(); break;
+        case 'm': case 'M': toggleMasks(); break;
     }
 });
 
