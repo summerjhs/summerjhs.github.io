@@ -525,7 +525,7 @@ function renderCanvas(canvasId, wrapId, noDataId, img, anns, catById, side) {
         instColors.push(isROI(anns[ai].category_id, catById) ? null : getInstanceColor(anns[ai], catById, _ii++));
     }
 
-    // Pixel-level mask blending with per-instance colors + inline contours
+    // === Pass 1: Mask blending via imageData (canvas-pixel iteration) ===
     var imageData = ctx.getImageData(0, 0, cw, ch);
     var px = imageData.data;
     var invScale = 1.0 / scale;
@@ -538,7 +538,7 @@ function renderCanvas(canvasId, wrapId, noDataId, img, anns, catById, side) {
         var color = instColors[ai];
         var mask = cached.mask, mh = cached.h, mw = cached.w;
         var cr = color.r, cg = color.g, cb = color.b;
-        var a = (selectedSide === side && selectedAnnId === ann.id) ? 0.62 : 0.42;
+        var a = (selectedSide === side && selectedAnnId === ann.id) ? 0.6 : 0.4;
 
         for (var cy=0; cy<ch; cy++) {
             var origY = Math.floor(cy * invScale);
@@ -556,8 +556,12 @@ function renderCanvas(canvasId, wrapId, noDataId, img, anns, catById, side) {
             }
         }
     }
+    ctx.putImageData(imageData, 0, 0);
 
-    // Contour outlines drawn into imageData
+    // === Pass 2: Contour outlines via fillRect (original-coord iteration) ===
+    // This follows the proven coco-reviewer approach: iterate in original space,
+    // detect edges there, then fillRect at scaled coordinates.
+    var step = scale < 0.5 ? 2 : 1;
     for (var ai=0; ai<anns.length; ai++) {
         var ann = anns[ai];
         if (!instColors[ai]) continue;
@@ -566,33 +570,31 @@ function renderCanvas(canvasId, wrapId, noDataId, img, anns, catById, side) {
         var mask = cached.mask, mh = cached.h, mw = cached.w;
         var isSel = (selectedSide === side && selectedAnnId === ann.id);
         var ec = instColors[ai];
-        var sr = isSel ? 255 : ec.r, sg = isSel ? 215 : ec.g, sb = isSel ? 0 : ec.b;
-        var lw = isSel ? 2 : 1;
 
-        for (var cy=0; cy<ch; cy++) {
-            var oy = Math.floor(cy * invScale);
-            if (oy >= mh) continue;
-            for (var cx=0; cx<cw; cx++) {
-                var ox = Math.floor(cx * invScale);
-                if (ox >= mw) continue;
-                if (!mask[ox*mh+oy]) continue;
-                if ((oy<=0||!mask[ox*mh+(oy-1)]) || (oy>=mh-1||!mask[ox*mh+(oy+1)]) ||
-                    (ox<=0||!mask[(ox-1)*mh+oy]) || (ox>=mw-1||!mask[(ox+1)*mh+oy])) {
-                    for (var dy=-lw;dy<=lw;dy++) {
-                        var py=cy+dy; if(py<0||py>=ch) continue;
-                        for (var dx=-lw;dx<=lw;dx++) {
-                            var px2=cx+dx; if(px2<0||px2>=cw) continue;
-                            var pi=(py*cw+px2)*4;
-                            px[pi]=sr; px[pi+1]=sg; px[pi+2]=sb;
-                        }
-                    }
+        if (isSel) {
+            ctx.fillStyle = 'rgba(255,215,0,0.9)';
+        } else {
+            ctx.fillStyle = 'rgb('+ec.r+','+ec.g+','+ec.b+')';
+        }
+
+        for (var col=0; col<mw; col+=step) {
+            for (var row=0; row<mh; row+=step) {
+                if (!mask[col*mh+row]) continue;
+                // Edge detection in original space
+                var isEdge = (col===0 || row===0 || col===mw-1 || row===mh-1 ||
+                    !mask[(col-1)*mh+row] || !mask[(col+1)*mh+row] ||
+                    !mask[col*mh+(row-1)] || !mask[col*mh+(row+1)]);
+                if (isEdge) {
+                    var sx = (col * scale)|0;
+                    var sy = (row * scale)|0;
+                    var sz = isSel ? 3 : 2;
+                    ctx.fillRect(sx, sy, sz, sz);
                 }
             }
         }
     }
-    ctx.putImageData(imageData, 0, 0);
 
-    // ROI dashed boxes (vector overlay after putImageData)
+    // === Pass 3: ROI dashed boxes ===
     for (var ai=0; ai<anns.length; ai++) {
         var ann = anns[ai];
         if (!isROI(ann.category_id, catById)) continue;
@@ -630,7 +632,7 @@ function computeBboxFromMask(ann, side) {
     return (x1>=x0 && y1>=y0) ? [x0,y0,x1-x0+1,y1-y0+1] : null;
 }
 
-// drawContour removed (now inline in renderCanvas)
+
 
 /* ==============================================================
    Click Detection
