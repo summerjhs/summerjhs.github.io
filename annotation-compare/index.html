@@ -197,6 +197,8 @@ footer .status { color: #888; font-size: 12px; }
     </div>
     <span class="sep" style="color:#555">|</span>
     <button class="btn-export" onclick="exportMemos()">Export Memos (xlsx)</button>
+    <span class="sep" style="color:#555">|</span>
+    <button id="btnToggleMask" onclick="toggleMasks()" style="background:#3a6a3a">Mask ON</button>
     <div class="spacer"></div>
     <span class="status" id="footerStatus"></span>
 </footer>
@@ -222,6 +224,7 @@ var selectedAnnId = null;
 var selectedSide = null;
 var memos = {};
 var currentFilter = 'all';
+var showMasks = true;
 
 var srcByImage = {};
 var wrkByImage = {};
@@ -460,6 +463,15 @@ async function loadAll() {
 /* ==============================================================
    Image Display & Canvas Rendering
    ============================================================== */
+
+function toggleMasks() {
+    showMasks = !showMasks;
+    var btn = document.getElementById('btnToggleMask');
+    btn.textContent = showMasks ? 'Mask ON' : 'Mask OFF';
+    btn.style.background = showMasks ? '#3a6a3a' : '#6a3a3a';
+    showImage();
+}
+
 async function showImage() {
     if (imageList.length === 0) return;
     var fileName = imageList[currentIdx];
@@ -522,6 +534,7 @@ function renderCanvas(canvasId, wrapId, noDataId, img, anns, catById, side) {
     }
 
     // === Pass 1: Mask blending via imageData (canvas-pixel iteration) ===
+    if (showMasks) {
     var imageData = ctx.getImageData(0, 0, cw, ch);
     var px = imageData.data;
     var invScale = 1.0 / scale;
@@ -553,6 +566,7 @@ function renderCanvas(canvasId, wrapId, noDataId, img, anns, catById, side) {
         }
     }
     ctx.putImageData(imageData, 0, 0);
+    } // end showMasks
 
     // === Pass 2: Contour outlines via fillRect (original-coord iteration) ===
     // This follows the proven coco-reviewer approach: iterate in original space,
