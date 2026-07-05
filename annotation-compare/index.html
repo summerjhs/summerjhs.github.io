@@ -695,7 +695,7 @@ function updateAnnList(srcAnns, wrkAnns) {
         if (memos[mk]) div.classList.add('has-memo');
         if (selectedSide===it.side && selectedAnnId===it.ann.id) div.classList.add('selected');
 
-        var color = getCatColor(it.ann.category_id, it.catById);
+        var color = getInstanceColor(it.ann, it.catById, i);
         var roi = isROI(it.ann.category_id, it.catById);
         var ds = roi ? 'border:1.5px dashed #FFD700;background:transparent;' : 'background:rgb('+color.r+','+color.g+','+color.b+');';
         var sc = it.side==='source' ? '#8bf' : '#c8f';
