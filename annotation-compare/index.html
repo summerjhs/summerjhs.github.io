@@ -281,41 +281,53 @@ function checkReady() {
 /* ==============================================================
    RLE Decode (COCO compressed RLE)
    ============================================================== */
-function decodeRLE(rle, h, w) {
-    var counts = rle.counts;
-    var decoded;
-    if (typeof counts === 'string') {
-        decoded = [];
-        var p = 0;
-        while (p < counts.length) {
-            var x = 0, k = 0, more = true;
-            while (more) {
-                var c = counts.charCodeAt(p) - 48;
-                x |= (c & 0x1f) << (5 * k);
-                more = (c & 0x20) !== 0;
-                p++; k++;
-            }
-            if (x & 1) x = -(x >> 1); else x = x >> 1;
-            decoded.push(x);
+function rleFrString(s) {
+    // Decode COCO compressed RLE string to run-length counts array.
+    // Matches pycocotools C implementation exactly.
+    var cnts = [];
+    var p = 0;
+    while (p < s.length) {
+        var x = 0, k = 0, more = true;
+        while (more) {
+            var c = s.charCodeAt(p) - 48;
+            x |= (c & 0x1f) << (5 * k);
+            more = (c & 0x20) !== 0;
+            p++; k++;
         }
-        var prev = 0;
-        for (var i = 2; i < decoded.length; i += 2) {
-            decoded[i] += prev;
-            prev = decoded[i];
+        // Sign extension on the last chunk
+        if (k > 0 && ((s.charCodeAt(p - 1) - 48) & 0x10)) {
+            x |= -(1 << (5 * k));
         }
-    } else {
-        decoded = counts;
+        // Delta decode: cnts[m] += cnts[m-2] for m >= 2
+        if (cnts.length >= 2) x += cnts[cnts.length - 2];
+        cnts.push(x);
     }
+    return cnts;
+}
+
+function rleToMask(cnts, h, w) {
+    // Convert run-length counts to column-major binary mask
     var mask = new Uint8Array(h * w);
     var idx = 0, val = 0;
-    for (var ri = 0; ri < decoded.length; ri++) {
-        var run = decoded[ri];
-        for (var j = 0; j < run; j++) {
-            if (idx < mask.length) mask[idx++] = val;
+    for (var i = 0; i < cnts.length; i++) {
+        var end = Math.min(idx + cnts[i], h * w);
+        if (val) {
+            for (var j = idx; j < end; j++) mask[j] = 1;
         }
+        idx = end;
         val = 1 - val;
     }
     return mask;
+}
+
+function decodeRLE(rle, h, w) {
+    var cnts;
+    if (typeof rle.counts === 'string') {
+        cnts = rleFrString(rle.counts);
+    } else {
+        cnts = rle.counts.slice();
+    }
+    return rleToMask(cnts, h, w);
 }
 
 function getMask(ann, side) {
