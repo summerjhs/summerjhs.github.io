@@ -200,6 +200,9 @@ footer .status { color: #8ab; font-size: 12px; } footer .status:hover { color: #
     <span class="sep" style="color:#555">|</span>
     <button class="btn-export" onclick="exportMemos()">Export Memos (xlsx)</button>
     <span class="sep" style="color:#555">|</span>
+    <button onclick="downloadModifiedJson()" id="btnDownloadJson" disabled style="background:#2a5a8a">수정 JSON 다운로드</button>
+    <span id="deleteCounter" style="color:#e55;font-size:12px"></span>
+    <span class="sep" style="color:#555">|</span>
     <button id="btnToggleMask" onclick="toggleMasks()" style="background:#3a6a3a">Mask ON</button>
     <div class="spacer"></div>
     <span class="status" id="footerStatus" style="cursor:pointer" title="클릭하여 파일명 복사" onclick="copyFileName()"></span>
@@ -225,6 +228,8 @@ var currentIdx = 0;
 var selectedAnnId = null;
 var selectedSide = null;
 var memos = {};
+var deletedAnnIds = new Set();
+var deletedHistory = [];  // for Ctrl+Z undo
 var currentFilter = 'all';
 var showMasks = true;
 
@@ -472,6 +477,7 @@ async function loadAll() {
     })();
 
     showImage();
+    updateDeleteCounter();
     showToast(imageList.length + ' images loaded');
 }
 
@@ -487,6 +493,67 @@ function copyFileName() {
     });
 }
 
+
+function deleteAnnotation() {
+    if (selectedAnnId === null || selectedSide !== 'worker') return;
+    if (!confirm('Worker 어노테이션 #' + selectedAnnId + ' 을 삭제하시겠습니까?')) return;
+    deletedAnnIds.add(selectedAnnId);
+    deletedHistory.push(selectedAnnId);
+    selectedAnnId = null;
+    selectedSide = null;
+    showImage();
+    updateDeleteCounter();
+    showToast('삭제됨 (미저장: ' + deletedAnnIds.size + '건)');
+}
+
+function restoreAnnotation(annId) {
+    if (!deletedAnnIds.has(annId)) return;
+    deletedAnnIds.delete(annId);
+    deletedHistory = deletedHistory.filter(function(id) { return id !== annId; });
+    showImage();
+    updateDeleteCounter();
+    showToast('어노테이션 #' + annId + ' 복원됨');
+}
+
+function restoreLastDeleted() {
+    if (deletedHistory.length === 0) return;
+    var lastId = deletedHistory.pop();
+    deletedAnnIds.delete(lastId);
+    showImage();
+    updateDeleteCounter();
+    showToast('어노테이션 #' + lastId + ' 복원됨 (Ctrl+Z)');
+}
+
+function updateDeleteCounter() {
+    var el = document.getElementById('deleteCounter');
+    var btn = document.getElementById('btnDownloadJson');
+    if (deletedAnnIds.size > 0) {
+        el.textContent = '삭제: ' + deletedAnnIds.size + '건';
+        btn.disabled = false;
+    } else {
+        el.textContent = '';
+        btn.disabled = true;
+    }
+}
+
+function downloadModifiedJson() {
+    if (deletedAnnIds.size === 0) { showToast('삭제된 어노테이션이 없습니다'); return; }
+    var newData = {
+        images: wrkData.images,
+        categories: wrkData.categories,
+        annotations: wrkData.annotations.filter(function(a) { return !deletedAnnIds.has(a.id); })
+    };
+    var jsonStr = JSON.stringify(newData);
+    var blob = new Blob([jsonStr], {type: 'application/json'});
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = 'modified_worker_' + new Date().toISOString().slice(0,10) + '.json';
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast('다운로드 완료 (' + deletedAnnIds.size + '건 삭제 반영)');
+}
+
 function toggleMasks() {
     showMasks = !showMasks;
     var btn = document.getElementById('btnToggleMask');
@@ -496,6 +563,10 @@ function toggleMasks() {
 }
 
 async function showImage() {
+    // Update delete button state
+    var delBtn = document.getElementById('btnDelAnn');
+    if (delBtn) delBtn.disabled = !(selectedSide === 'worker' && selectedAnnId !== null && !deletedAnnIds.has(selectedAnnId));
+
     if (imageList.length === 0) return;
     var fileName = imageList[currentIdx];
     document.getElementById('headerCounter').textContent = (currentIdx+1) + ' / ' + imageList.length;
@@ -565,6 +636,7 @@ function renderCanvas(canvasId, wrapId, noDataId, img, anns, catById, side) {
     for (var ai=0; ai<anns.length; ai++) {
         var ann = anns[ai];
         if (!instColors[ai]) continue;
+        if (side === 'worker' && deletedAnnIds.has(ann.id)) continue;
         var cached = getMask(ann, side);
         if (!cached) continue;
         var color = instColors[ai];
@@ -598,6 +670,7 @@ function renderCanvas(canvasId, wrapId, noDataId, img, anns, catById, side) {
     for (var ai=0; ai<anns.length; ai++) {
         var ann = anns[ai];
         if (!instColors[ai]) continue;
+        if (side === 'worker' && deletedAnnIds.has(ann.id)) continue;
         var cached = getMask(ann, side);
         if (!cached) continue;
         var mask = cached.mask, mh = cached.h, mw = cached.w;
@@ -684,6 +757,7 @@ function setupCanvasClick(canvasId) {
         var found = null;
         for (var i = canvas._anns.length-1; i >= 0; i--) {
             var ann = canvas._anns[i];
+            if (canvas._side === 'worker' && deletedAnnIds.has(ann.id)) continue;
             var cached = getMask(ann, canvas._side);
             if (!cached) continue;
             if (imgX<0||imgX>=cached.w||imgY<0||imgY>=cached.h) continue;
@@ -742,13 +816,21 @@ function updateAnnList(srcAnns, wrkAnns) {
             '<span class="ann-side" style="color:'+sc+'">'+sl+'</span>'+
             '<span class="ann-id">#'+it.ann.id+'</span>';
 
-        (function(item){
-            div.addEventListener('click', function(){
-                selectedAnnId = item.ann.id;
-                selectedSide = item.side;
-                showImage();
-            });
-        })(it);
+        var isDeleted = (it.side === 'worker' && deletedAnnIds.has(it.ann.id));
+        if (isDeleted) {
+            div.style.opacity = '0.4';
+            div.style.textDecoration = 'line-through';
+            div.innerHTML += '<span style="color:#e55;font-size:10px;margin-left:auto;cursor:pointer">복원</span>';
+            (function(annId){ div.addEventListener('click', function(){ restoreAnnotation(annId); }); })(it.ann.id);
+        } else {
+            (function(item){
+                div.addEventListener('click', function(){
+                    selectedAnnId = item.ann.id;
+                    selectedSide = item.side;
+                    showImage();
+                });
+            })(it);
+        }
         list.appendChild(div);
     }
 }
@@ -983,11 +1065,13 @@ document.addEventListener('keydown', function(e) {
         if (e.key==='Enter' && e.target.id==='gotoInput') { gotoImage(); e.preventDefault(); }
         return;
     }
+    if (e.ctrlKey && e.key === 'z') { restoreLastDeleted(); e.preventDefault(); return; }
     switch(e.key) {
         case 'a': case 'A': case 'ArrowLeft': prevImage(); e.preventDefault(); break;
         case 'd': case 'D': case 'ArrowRight': nextImage(); e.preventDefault(); break;
         case 'Escape': selectedAnnId=null; selectedSide=null; if(imageList.length) showImage(); break;
         case 'm': case 'M': toggleMasks(); break;
+        case 'Delete': deleteAnnotation(); e.preventDefault(); break;
     }
 });
 
