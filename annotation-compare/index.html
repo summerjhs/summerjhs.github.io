@@ -203,6 +203,17 @@ footer .status { color: #8ab; font-size: 12px; } footer .status:hover { color: #
     <button onclick="downloadModifiedJson()" id="btnDownloadJson" disabled style="background:#2a5a8a">수정 JSON 다운로드</button>
     <span id="deleteCounter" style="color:#e55;font-size:12px"></span>
     <span class="sep" style="color:#555">|</span>
+    <span class="sep" style="color:#555">|</span>
+    <select id="sortSelect" onchange="changeSortOrder(this.value)" style="background:#3c3c3c;color:#fff;border:1px solid #555;padding:3px 6px;border-radius:4px;font-size:12px">
+        <option value="name">파일명순</option>
+        <option value="diff_all">전체 차이순</option>
+        <option value="diff_icepack">ice pack 차이순</option>
+        <option value="diff_basket">basket 차이순</option>
+        <option value="diff_item">item 차이순</option>
+        <option value="diff_person">person 차이순</option>
+        <option value="diff_tape">tape 차이순</option>
+        <option value="diff_bcr">BCR 차이순</option>
+    </select>
     <button id="btnToggleMask" onclick="toggleMasks()" style="background:#3a6a3a">Mask ON</button>
     <div class="spacer"></div>
     <span class="status" id="footerStatus" style="cursor:pointer" title="클릭하여 파일명 복사" onclick="copyFileName()"></span>
@@ -230,6 +241,7 @@ var selectedSide = null;
 var memos = {};
 var deletedAnnIds = new Set();
 var deletedHistory = [];  // for Ctrl+Z undo
+var currentSort = 'name';  // 'name' | 'diff_all' | 'diff_icepack' | 'diff_basket' | etc
 var currentFilter = 'all';
 var showMasks = true;
 
@@ -552,6 +564,69 @@ function downloadModifiedJson() {
     a.click();
     URL.revokeObjectURL(url);
     showToast('다운로드 완료 (' + deletedAnnIds.size + '건 삭제 반영)');
+}
+
+function getAnnotationDiffScore(fileName, catFilter) {
+    var si = srcImgByName[fileName.toLowerCase()];
+    var wi = wrkImgByName[fileName.toLowerCase()];
+    var srcAnns = si ? (srcByImage[si.id] || []) : [];
+    var wrkAnns = wi ? (wrkByImage[wi.id] || []) : [];
+
+    if (catFilter === 'all') {
+        // Total annotation count difference (excluding ROI)
+        var srcCount = 0, wrkCount = 0;
+        for (var i = 0; i < srcAnns.length; i++) {
+            if (!isROI(srcAnns[i].category_id, srcCatById)) srcCount++;
+        }
+        for (var i = 0; i < wrkAnns.length; i++) {
+            if (!isROI(wrkAnns[i].category_id, wrkCatById)) wrkCount++;
+        }
+        return Math.abs(srcCount - wrkCount);
+    }
+
+    // Category-specific count difference
+    var targetName = catFilter.toLowerCase();
+    var srcCount = 0, wrkCount = 0;
+    for (var i = 0; i < srcAnns.length; i++) {
+        var cat = srcCatById[srcAnns[i].category_id];
+        if (cat && cat.name.toLowerCase().indexOf(targetName) >= 0) srcCount++;
+    }
+    for (var i = 0; i < wrkAnns.length; i++) {
+        var cat = wrkCatById[wrkAnns[i].category_id];
+        if (cat && cat.name.toLowerCase().indexOf(targetName) >= 0) wrkCount++;
+    }
+    return Math.abs(srcCount - wrkCount);
+}
+
+function sortImageList(sortKey) {
+    currentSort = sortKey;
+    if (sortKey === 'name') {
+        imageList.sort();
+    } else {
+        var catFilter = 'all';
+        if (sortKey === 'diff_icepack') catFilter = 'ice pack';
+        else if (sortKey === 'diff_basket') catFilter = 'basket';
+        else if (sortKey === 'diff_item') catFilter = 'item';
+        else if (sortKey === 'diff_person') catFilter = 'person';
+        else if (sortKey === 'diff_tape') catFilter = 'tape';
+        else if (sortKey === 'diff_bcr') catFilter = 'bcr';
+
+        // Pre-compute scores
+        var scores = {};
+        for (var i = 0; i < imageList.length; i++) {
+            scores[imageList[i]] = getAnnotationDiffScore(imageList[i], catFilter);
+        }
+        imageList.sort(function(a, b) {
+            return scores[b] - scores[a];  // descending (biggest diff first)
+        });
+    }
+}
+
+function changeSortOrder(sortKey) {
+    sortImageList(sortKey);
+    currentIdx = 0;
+    showImage();
+    showToast('정렬: ' + document.getElementById('sortSelect').selectedOptions[0].text);
 }
 
 function toggleMasks() {
