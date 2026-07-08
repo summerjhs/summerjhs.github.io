@@ -288,7 +288,7 @@ document.getElementById('imgInput').addEventListener('change', function(e) {
             if (!folderName && parts.length > 1) folderName = parts[0];
             var name = parts[parts.length - 1];
             if (/\.(jpg|jpeg|png|bmp|webp|tif|tiff)$/i.test(name)) {
-                imageFiles[name] = f;
+                imageFiles[name.toLowerCase()] = f;
             }
         }
         document.getElementById('imgFolderName').textContent = folderName || (Object.keys(imageFiles).length + ' files');
