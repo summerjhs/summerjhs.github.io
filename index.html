@@ -6,18 +6,28 @@
 <title>Annotation Tools</title>
 <style>
 :root{
-  --bg:#0c0d11;
-  --surface:#14161c;
-  --surface-2:#191c24;
-  --border:#232734;
-  --border-hi:#39415a;
-  --text:#e8eaf0;
-  --muted:#949aa8;
-  --dim:#646a78;
-  --accent:#6d8bff;
-  --accent-hi:#8ba4ff;
-  --accent-soft:rgba(109,139,255,.10);
-  --accent-line:rgba(109,139,255,.28);
+  /* 팔레트 */
+  --mint:#aafbdc;
+  --cyan:#c0ffee;
+  --pink-1:#ffd6e4;
+  --pink-2:#ffc8d2;
+
+  /* 면 */
+  --bg:#f4fffb;
+  --surface:#ffffff;
+  --surface-2:#ffffff;
+  --border:#c9e5dd;
+  --border-hi:#8fd3bf;
+
+  /* 글자 — 팔레트에 어두운 색이 없어 파생(대비 확보용) */
+  --text:#0d1f1a;   /* 모든 파스텔 면 위 최저 11.76:1 */
+  --muted:#4a5f59;  /* 모든 파스텔 면 위 최저 4.70:1 */
+  --dim:#4a5f59;
+
+  --accent:#aafbdc;
+  --accent-hi:#ffc8d2;
+  --accent-soft:rgba(170,251,220,.45);
+  --accent-line:rgba(143,211,191,.55);
   --radius:16px;
   --ease:cubic-bezier(.4,0,.2,1);
 }
@@ -37,15 +47,17 @@ body{
   letter-spacing:-0.01em;
 }
 
-/* 상단 은은한 앰비언트 글로우 */
+/* 파스텔 앰비언트 워시 */
 body::before{
   content:'';
   position:fixed;
   inset:0;
   pointer-events:none;
   background:
-    radial-gradient(820px 380px at 50% -120px, rgba(109,139,255,.13), transparent 68%),
-    radial-gradient(600px 300px at 88% 8%, rgba(150,109,255,.06), transparent 70%);
+    radial-gradient(900px 420px at 50% -150px, var(--cyan), transparent 70%),
+    radial-gradient(720px 360px at 90% 2%, var(--pink-1), transparent 72%),
+    radial-gradient(700px 380px at 6% 16%, var(--mint), transparent 70%);
+  opacity:.8;
 }
 
 /* ===== Header ===== */
@@ -82,7 +94,7 @@ header h1{
   font-weight:650;
   letter-spacing:-0.035em;
   line-height:1.1;
-  background:linear-gradient(180deg,#fff 20%,#a8b0c4);
+  background:linear-gradient(180deg,#0d1f1a 25%,#2f6b5a);
   -webkit-background-clip:text;
   background-clip:text;
   color:transparent;
@@ -107,7 +119,7 @@ header p{
 
 /* ===== Card ===== */
 .card{
-  background:linear-gradient(180deg,var(--surface-2),var(--surface));
+  background:var(--surface);
   border:1px solid var(--border);
   border-radius:var(--radius);
   padding:26px;
@@ -115,6 +127,7 @@ header p{
   flex-direction:column;
   position:relative;
   overflow:hidden;
+  box-shadow:0 1px 2px rgba(13,31,26,.04),0 8px 24px -16px rgba(13,31,26,.18);
   transition:border-color .25s var(--ease),transform .25s var(--ease),box-shadow .25s var(--ease);
 }
 /* 상단 하이라이트 라인 */
@@ -130,7 +143,7 @@ header p{
 .card:hover{
   border-color:var(--border-hi);
   transform:translateY(-3px);
-  box-shadow:0 12px 32px -12px rgba(0,0,0,.7);
+  box-shadow:0 2px 4px rgba(13,31,26,.05),0 18px 36px -18px rgba(13,31,26,.3);
 }
 .card:hover::before{opacity:1}
 
@@ -146,18 +159,18 @@ header p{
   display:grid;
   place-items:center;
   font-size:19px;
-  color:var(--accent);
+  color:var(--text);
   background:var(--accent-soft);
   border:1px solid var(--accent-line);
   border-radius:11px;
   transition:background .25s var(--ease);
 }
-.card:hover .card-icon{background:rgba(109,139,255,.16)}
+.card:hover .card-icon{background:var(--mint)}
 .card h2{
   font-size:17.5px;
   font-weight:600;
   letter-spacing:-0.02em;
-  color:#fff;
+  color:var(--text);
   line-height:1.35;
 }
 
@@ -189,7 +202,7 @@ header p{
 
 .card-tags{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:22px}
 .tag{
-  background:rgba(255,255,255,.035);
+  background:var(--cyan);
   border:1px solid var(--border);
   color:var(--muted);
   padding:3px 10px;
@@ -209,24 +222,23 @@ header p{
 .card-links a{
   flex:1 1 92px;
   padding:11px 14px;
-  background:rgba(255,255,255,.04);
-  border:1px solid var(--border);
-  color:var(--text);
+  background:var(--mint);
+  border:1px solid transparent;
+  color:var(--text);   /* 파스텔 면 위 흰 글자는 대비 붕괴 → 잉크 고정 */
   text-decoration:none;
   border-radius:9px;
   font-size:13px;
-  font-weight:500;
+  font-weight:550;
   text-align:center;
   white-space:nowrap;
-  transition:background .2s var(--ease),border-color .2s var(--ease),color .2s var(--ease);
+  transition:background .2s var(--ease),border-color .2s var(--ease),transform .2s var(--ease);
 }
 .card-links a:hover{
-  background:var(--accent);
-  border-color:var(--accent);
-  color:#fff;
+  background:var(--pink-2);
+  border-color:var(--pink-2);
 }
 .card-links a:focus-visible{
-  outline:2px solid var(--accent-hi);
+  outline:2px solid var(--text);
   outline-offset:2px;
 }
 

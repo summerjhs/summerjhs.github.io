@@ -6,81 +6,100 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>도장검사지 결함코드 검수 툴</title>
 <style>
-*{margin:0;padding:0;box-sizing:border-box}
-body{font-family:'Segoe UI',sans-serif;background:#1e1e1e;color:#ccc;height:100vh;display:flex;flex-direction:column;overflow:hidden;user-select:none}
+:root{
+  /* 팔레트 */
+  --mint:#aafbdc;
+  --cyan:#c0ffee;
+  --pink-1:#ffd6e4;
+  --pink-2:#ffc8d2;
+  --white:#ffffff;
 
-header{background:#2d2d2d;padding:6px 14px;display:flex;align-items:center;gap:10px;border-bottom:1px solid #444;flex-shrink:0}
-header h1{font-size:15px;color:#fff;white-space:nowrap}
-header button{background:#4a6a8a;color:#fff;border:none;padding:4px 12px;border-radius:4px;cursor:pointer;font-size:13px}
-header button:hover{background:#5a7a9a}
-header button.ghost{background:#3a3a3a}
-header button.ghost:hover{background:#4a4a4a}
-header .counter{color:#aaa;font-size:13px;white-space:nowrap}
+  /* 파생 — 팔레트에 어두운 색이 없어 대비 확보용으로 추가 */
+  --ink:#0d1f1a;        /* 본문. 모든 파스텔 면 위 최저 11.76:1 */
+  --muted:#4a5f59;      /* 보조. 모든 파스텔 면 위 최저 4.70:1 */
+  --border:#c9e5dd;
+  --border-hi:#8fd3bf;
+  --bg:#f4fffb;
+  --hover:#ecfbf6;
+  --canvas-bg:#a9d2c9;  /* 흰 스캔용지와 1.65:1 — 용지가 배경에 묻히지 않게 */
+  --deep-mint:#0e7c5f;  /* 정상/진행 표시용 채도 톤 */
+  --deep-rose:#b0296b;  /* 오류/그룹 강조용 채도 톤 */
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Segoe UI',sans-serif;background:var(--bg);color:var(--ink);height:100vh;display:flex;flex-direction:column;overflow:hidden;user-select:none}
+
+header{background:var(--cyan);padding:6px 14px;display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--border);flex-shrink:0}
+header h1{font-size:15px;color:var(--ink);white-space:nowrap;font-weight:600}
+header button{background:var(--mint);color:var(--ink);border:1px solid transparent;padding:4px 12px;border-radius:4px;cursor:pointer;font-size:13px;font-weight:500}
+header button:hover{background:var(--pink-2)}
+header button.ghost{background:var(--white);border-color:var(--border)}
+header button.ghost:hover{background:var(--pink-1);border-color:var(--pink-2)}
+header .counter{color:var(--muted);font-size:13px;white-space:nowrap}
 .spacer{flex:1}
 
 .main{flex:1;display:flex;min-height:0}
-aside{background:#252525;border-right:1px solid #3a3a3a;width:230px;flex-shrink:0;overflow-y:auto;padding:10px}
-aside.right{border-right:none;border-left:1px solid #3a3a3a;width:290px}
-.center{flex:1;position:relative;background:#141414;min-width:0}
+aside{background:var(--white);border-right:1px solid var(--border);width:230px;flex-shrink:0;overflow-y:auto;padding:10px}
+aside.right{border-right:none;border-left:1px solid var(--border);width:290px}
+.center{flex:1;position:relative;background:var(--canvas-bg);min-width:0}
 canvas{display:block;width:100%;height:100%;cursor:crosshair}
 
 .sec{margin-bottom:14px}
-.sec h3{font-size:11px;color:#7a8a9a;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;font-weight:600}
+.sec h3{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;font-weight:600}
 
 .imglist{display:flex;flex-direction:column;gap:2px;max-height:190px;overflow-y:auto}
-.imgitem{padding:5px 7px;border-radius:4px;font-size:12px;cursor:pointer;display:flex;justify-content:space-between;gap:6px;color:#bbb}
-.imgitem:hover{background:#333}
-.imgitem.active{background:#4a6a8a;color:#fff}
-.imgitem .n{color:#888;font-size:11px}
-.imgitem.active .n{color:#dbe}
-.imgitem.done .n::after{content:' ✓';color:#5cb85c}
+.imgitem{padding:5px 7px;border-radius:4px;font-size:12px;cursor:pointer;display:flex;justify-content:space-between;gap:6px;color:var(--ink)}
+.imgitem:hover{background:var(--hover)}
+.imgitem.active{background:var(--mint);color:var(--ink);font-weight:600}
+.imgitem .n{color:var(--muted);font-size:11px}
+.imgitem.active .n{color:var(--ink)}
+.imgitem.done .n::after{content:' ✓';color:var(--deep-mint)}
 
-label.chk{display:flex;align-items:center;gap:7px;font-size:12px;padding:3px 2px;cursor:pointer;color:#bbb}
-label.chk:hover{color:#fff}
-.swatch{width:11px;height:11px;border-radius:2px;flex-shrink:0}
-.cnt{margin-left:auto;color:#777;font-size:11px}
+label.chk{display:flex;align-items:center;gap:7px;font-size:12px;padding:3px 2px;cursor:pointer;color:var(--ink)}
+label.chk:hover{color:var(--deep-mint)}
+.swatch{width:11px;height:11px;border-radius:2px;flex-shrink:0;border:1px solid rgba(13,31,26,.15)}
+.cnt{margin-left:auto;color:var(--muted);font-size:11px}
 
 .nums{display:flex;flex-wrap:wrap;gap:4px}
-.numchip{background:#333;color:#bbb;border:1px solid #444;border-radius:4px;padding:3px 8px;font-size:12px;cursor:pointer;min-width:28px;text-align:center}
-.numchip:hover{border-color:#4a6a8a;color:#fff}
-.numchip.active{background:#4a6a8a;border-color:#5a7a9a;color:#fff;font-weight:600}
+.numchip{background:var(--white);color:var(--ink);border:1px solid var(--border);border-radius:4px;padding:3px 8px;font-size:12px;cursor:pointer;min-width:28px;text-align:center}
+.numchip:hover{border-color:var(--border-hi);background:var(--hover)}
+.numchip.active{background:var(--mint);border-color:var(--deep-mint);color:var(--ink);font-weight:700}
 
 .objlist{display:flex;flex-direction:column;gap:2px;max-height:260px;overflow-y:auto}
-.objitem{padding:4px 7px;border-radius:4px;font-size:12px;cursor:pointer;display:flex;align-items:center;gap:6px;color:#bbb;border-left:3px solid transparent}
-.objitem:hover{background:#333}
-.objitem.active{background:#3c5570;color:#fff}
-.objitem.dim{opacity:.35}
+.objitem{padding:4px 7px;border-radius:4px;font-size:12px;cursor:pointer;display:flex;align-items:center;gap:6px;color:var(--ink);border-left:3px solid transparent}
+.objitem:hover{background:var(--hover)}
+.objitem.active{background:var(--mint);color:var(--ink);font-weight:600}
+.objitem.dim{opacity:.4}
 .objitem .t{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.badge{font-size:10px;padding:1px 5px;border-radius:8px;flex-shrink:0}
-.badge.ok{background:#2d5a2d;color:#9d9}
-.badge.ng{background:#6a2a2a;color:#f99}
+.badge{font-size:10px;padding:1px 5px;border-radius:8px;flex-shrink:0;font-weight:600}
+.badge.ok{background:var(--mint);color:var(--ink);border:1px solid var(--deep-mint)}
+.badge.ng{background:var(--pink-2);color:var(--ink);border:1px solid var(--deep-rose)}
 
 .detail{font-size:12px;line-height:1.7}
 .detail .row{display:flex;gap:8px}
-.detail .k{color:#7a8a9a;width:72px;flex-shrink:0}
-.detail .v{color:#ddd;word-break:break-all}
-.empty{color:#666;font-size:12px;padding:8px 0;line-height:1.6}
+.detail .k{color:var(--muted);width:72px;flex-shrink:0}
+.detail .v{color:var(--ink);word-break:break-all}
+.empty{color:var(--muted);font-size:12px;padding:8px 0;line-height:1.6}
 
 .stbtns{display:flex;gap:5px;margin:8px 0}
-.stbtns button{flex:1;padding:6px;border:1px solid #444;background:#333;color:#bbb;border-radius:4px;cursor:pointer;font-size:12px}
-.stbtns button:hover{border-color:#666;color:#fff}
-.stbtns button.on-ok{background:#2d5a2d;border-color:#3d7a3d;color:#cfc}
-.stbtns button.on-ng{background:#6a2a2a;border-color:#8a3a3a;color:#fcc}
-.stbtns button.on-un{background:#4a4a4a;border-color:#666;color:#fff}
-textarea{width:100%;background:#1a1a1a;border:1px solid #444;color:#ddd;border-radius:4px;padding:6px;font-size:12px;font-family:inherit;resize:vertical;min-height:56px}
-textarea:focus{outline:none;border-color:#4a6a8a}
+.stbtns button{flex:1;padding:6px;border:1px solid var(--border);background:var(--white);color:var(--ink);border-radius:4px;cursor:pointer;font-size:12px}
+.stbtns button:hover{border-color:var(--border-hi);background:var(--hover)}
+.stbtns button.on-ok{background:var(--mint);border-color:var(--deep-mint);color:var(--ink);font-weight:600}
+.stbtns button.on-ng{background:var(--pink-2);border-color:var(--deep-rose);color:var(--ink);font-weight:600}
+.stbtns button.on-un{background:var(--cyan);border-color:var(--border-hi);color:var(--ink);font-weight:600}
+textarea{width:100%;background:var(--white);border:1px solid var(--border);color:var(--ink);border-radius:4px;padding:6px;font-size:12px;font-family:inherit;resize:vertical;min-height:56px}
+textarea:focus{outline:none;border-color:var(--deep-mint)}
 
-.bar{height:5px;background:#333;border-radius:3px;overflow:hidden;margin-top:5px}
-.bar i{display:block;height:100%;background:#4a6a8a;width:0}
+.bar{height:5px;background:var(--hover);border-radius:3px;overflow:hidden;margin-top:5px}
+.bar i{display:block;height:100%;background:var(--deep-mint);width:0}
 
-.drop{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:14px;color:#666;text-align:center;padding:24px;pointer-events:none}
+.drop{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:14px;color:var(--muted);text-align:center;padding:24px;pointer-events:none}
 .drop.hide{display:none}
-.drop .big{font-size:15px;color:#999}
+.drop .big{font-size:15px;color:var(--ink)}
 .drop .sm{font-size:12px;line-height:1.8}
-.drop kbd{background:#333;border:1px solid #555;border-radius:3px;padding:1px 5px;font-size:11px;color:#bbb}
-.center.dragover{outline:2px dashed #4a6a8a;outline-offset:-8px}
-.hint{position:absolute;left:10px;bottom:8px;font-size:11px;color:#666;pointer-events:none;background:rgba(20,20,20,.75);padding:3px 8px;border-radius:4px}
-.warn{color:#d88;font-size:11px;margin-top:5px;line-height:1.5}
+.drop kbd{background:var(--white);border:1px solid var(--border);border-radius:3px;padding:1px 5px;font-size:11px;color:var(--ink)}
+.center.dragover{outline:2px dashed var(--deep-mint);outline-offset:-8px}
+.hint{position:absolute;left:10px;bottom:8px;font-size:11px;color:var(--muted);pointer-events:none;background:rgba(255,255,255,.88);padding:3px 8px;border-radius:4px}
+.warn{color:var(--deep-rose);font-size:11px;margin-top:5px;line-height:1.5}
 </style>
 </head>
 <body>
@@ -126,7 +145,7 @@ textarea:focus{outline:none;border-color:#4a6a8a}
       <div class="sm">
         상단 <b>이미지 폴더</b> / <b>JSON 파일</b> 버튼을 쓰거나<br>
         이 영역에 폴더·파일을 <b>드래그앤드롭</b> 하세요.<br>
-        <span style="color:#777">브라우저 보안상 경로 문자열로는 읽을 수 없어<br>폴더 선택기/드롭 방식을 사용합니다. 파일은 서버로 전송되지 않습니다.</span>
+        <span style="color:var(--muted)">브라우저 보안상 경로 문자열로는 읽을 수 없어<br>폴더 선택기/드롭 방식을 사용합니다. 파일은 서버로 전송되지 않습니다.</span>
       </div>
     </div>
     <div class="hint" id="hint"></div>
@@ -168,6 +187,15 @@ let hidden = new Set();   // 숨긴 타입
 let reviews = loadReviews();
 let view = { scale: 1, ox: 0, oy: 0 };
 let labelBoxes = [];      // 렌더 후 라벨 히트박스
+
+/* 캔버스 색 — 라이트 파스텔 대응.
+   #141414/#fff/#7ab8ff 는 밝은 배경에서 보이지 않아 교체.
+   JSON 어노테이션 색(extra.color)은 데이터이므로 그대로 둔다. */
+const CANVAS_BG = '#a9d2c9';   /* 흰 스캔용지와 1.65:1 — 용지가 배경에 묻히지 않음 */
+const HI_SEL    = '#0d1f1a';   /* 선택 강조(잉크) */
+const HI_GROUP  = '#b0296b';   /* 번호그룹 강조(딥로즈) */
+const DEEP_MINT = '#0e7c5f';   /* 정상 */
+const DEEP_ROSE = '#c2185b';   /* 오류 */
 
 const cv = document.getElementById('cv');
 const ctx = cv.getContext('2d');
@@ -425,7 +453,7 @@ function render() {
   resizeCanvas();
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.clearRect(0, 0, cv.width, cv.height);
-  ctx.fillStyle = '#141414';
+  ctx.fillStyle = CANVAS_BG;
   ctx.fillRect(0, 0, cv.width, cv.height);
   labelBoxes = [];
   if (!curImg) return;
@@ -469,7 +497,7 @@ function render() {
   for (const o of hi) {
     const a = toScreen({ x: o.bbox.x0, y: o.bbox.y0 }), b = toScreen({ x: o.bbox.x1, y: o.bbox.y1 });
     const m = 3.5 * S;
-    ctx.strokeStyle = o === sel ? '#fff' : '#7ab8ff';
+    ctx.strokeStyle = o === sel ? HI_SEL : HI_GROUP;
     ctx.strokeRect(a.x - m, a.y - m, (b.x - a.x) + 2 * m, (b.y - a.y) + 2 * m);
   }
   ctx.setLineDash([]);
@@ -504,7 +532,7 @@ function render() {
       ctx.fillRect(it.x0, it.y0, it.w, it.h);
       const rv = getReview(img, it.o);
       if (rv.status) {
-        ctx.fillStyle = rv.status === 'OK' ? '#5cb85c' : '#e05a5a';
+        ctx.fillStyle = rv.status === 'OK' ? DEEP_MINT : DEEP_ROSE;
         ctx.fillRect(it.x0, it.y0, Math.max(2, 3 * S), it.h);
       }
       ctx.fillStyle = textColor(it.o.color);
@@ -653,7 +681,7 @@ function renderDetail() {
   const img = images[cur];
   if (!sel) {
     el.innerHTML = selNum
-      ? `<div class="empty">번호 <b style="color:#7ab8ff">#${selNum}</b> 그룹 ${img.objs.filter(o => inNumGroup(o, selNum)).length}개 표시 중.<br>객체를 클릭하면 상세가 나옵니다.</div>`
+      ? `<div class="empty">번호 <b style="color:var(--deep-rose)">#${selNum}</b> 그룹 ${img.objs.filter(o => inNumGroup(o, selNum)).length}개 표시 중.<br>객체를 클릭하면 상세가 나옵니다.</div>`
       : '<div class="empty">캔버스에서 객체를 클릭하거나<br>목록에서 선택하세요</div>';
     rs.style.display = 'none';
     return;
@@ -666,9 +694,9 @@ function renderDetail() {
     ${row('도형', o.ann)}
     ${row('번호', o.numbers.join(', ') || '-')}
     ${row('추가숫자', o.addNumbers.join(', '))}
-    ${row('OCR', o.text ? `<b style="color:#fff">${o.text}</b>` : '')}
+    ${row('OCR', o.text ? `<b style="color:var(--ink)">${o.text}</b>` : '')}
     ${row('검사코드', o.checks.join(', '))}
-    ${row('objectID', `<span style="font-size:11px;color:#999">${o.id}</span>`)}
+    ${row('objectID', `<span style="font-size:11px;color:var(--muted)">${o.id}</span>`)}
     ${row('좌표', `${Math.round(o.bbox.x0)}, ${Math.round(o.bbox.y0)} ~ ${Math.round(o.bbox.x1)}, ${Math.round(o.bbox.y1)}`)}
   `;
   rs.style.display = '';
