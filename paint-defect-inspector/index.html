@@ -8,32 +8,34 @@
 <style>
 :root{
   /* 팔레트 */
-  --mint:#aafbdc;
-  --cyan:#c0ffee;
-  --pink-1:#ffd6e4;
-  --pink-2:#ffc8d2;
+  --blue-1:#D2E0FB;
+  --cream:#FEF9D9;
+  --sage:#DEE5D4;
+  --blue-2:#8EACCD;
   --white:#ffffff;
 
-  /* 파생 — 팔레트에 어두운 색이 없어 대비 확보용으로 추가 */
-  --ink:#0d1f1a;        /* 본문. 모든 파스텔 면 위 최저 11.76:1 */
-  --muted:#4a5f59;      /* 보조. 모든 파스텔 면 위 최저 4.70:1 */
-  --border:#c9e5dd;
-  --border-hi:#8fd3bf;
-  --bg:#f4fffb;
-  --hover:#ecfbf6;
-  --canvas-bg:#a9d2c9;  /* 흰 스캔용지와 1.65:1 — 용지가 배경에 묻히지 않게 */
-  --deep-mint:#0e7c5f;  /* 정상/진행 표시용 채도 톤 */
-  --deep-rose:#b0296b;  /* 오류/그룹 강조용 채도 톤 */
+  /* 파생 — 팔레트가 모두 밝아 대비 확보용으로 추가 */
+  --ink:#121c2e;        /* 본문. 모든 면 위 최저 7.25:1 */
+  --muted:#3f5170;      /* 보조. 흰/연블루/크림/세이지 위 6.0~8.0:1 (미드블루 면에는 미사용) */
+  --border:#ccdaf2;
+  --border-hi:#8EACCD;
+  --bg:#f7faff;
+  --hover:#eef4ff;
+  --canvas-bg:#8EACCD;  /* 팔레트 색 그대로. 흰 스캔용지와 2.35:1로 용지가 뚜렷이 구분됨 */
+  --deep-sage:#5a6b48;  /* 정상 */
+  --deep-terra:#a8523a; /* 오류 — 팔레트에 경고색이 없어 파생 */
+  --deep-gold:#7a5c1f;  /* 번호그룹 강조 */
+  --deep-blue:#2f5c8f;  /* 진행/포커스 */
 }
 *{margin:0;padding:0;box-sizing:border-box}
 body{font-family:'Segoe UI',sans-serif;background:var(--bg);color:var(--ink);height:100vh;display:flex;flex-direction:column;overflow:hidden;user-select:none}
 
-header{background:var(--cyan);padding:6px 14px;display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--border);flex-shrink:0}
+header{background:var(--blue-1);padding:6px 14px;display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--border);flex-shrink:0}
 header h1{font-size:15px;color:var(--ink);white-space:nowrap;font-weight:600}
-header button{background:var(--mint);color:var(--ink);border:1px solid transparent;padding:4px 12px;border-radius:4px;cursor:pointer;font-size:13px;font-weight:500}
-header button:hover{background:var(--pink-2)}
+header button{background:var(--blue-1);color:var(--ink);border:1px solid transparent;padding:4px 12px;border-radius:4px;cursor:pointer;font-size:13px;font-weight:500}
+header button:hover{background:var(--blue-2)}
 header button.ghost{background:var(--white);border-color:var(--border)}
-header button.ghost:hover{background:var(--pink-1);border-color:var(--pink-2)}
+header button.ghost:hover{background:var(--cream);border-color:var(--border-hi)}
 header .counter{color:var(--muted);font-size:13px;white-space:nowrap}
 .spacer{flex:1}
 
@@ -49,30 +51,30 @@ canvas{display:block;width:100%;height:100%;cursor:crosshair}
 .imglist{display:flex;flex-direction:column;gap:2px;max-height:190px;overflow-y:auto}
 .imgitem{padding:5px 7px;border-radius:4px;font-size:12px;cursor:pointer;display:flex;justify-content:space-between;gap:6px;color:var(--ink)}
 .imgitem:hover{background:var(--hover)}
-.imgitem.active{background:var(--mint);color:var(--ink);font-weight:600}
+.imgitem.active{background:var(--blue-1);color:var(--ink);font-weight:600}
 .imgitem .n{color:var(--muted);font-size:11px}
 .imgitem.active .n{color:var(--ink)}
-.imgitem.done .n::after{content:' ✓';color:var(--deep-mint)}
+.imgitem.done .n::after{content:' ✓';color:var(--deep-sage)}
 
 label.chk{display:flex;align-items:center;gap:7px;font-size:12px;padding:3px 2px;cursor:pointer;color:var(--ink)}
-label.chk:hover{color:var(--deep-mint)}
-.swatch{width:11px;height:11px;border-radius:2px;flex-shrink:0;border:1px solid rgba(13,31,26,.15)}
+label.chk:hover{color:var(--deep-blue)}
+.swatch{width:11px;height:11px;border-radius:2px;flex-shrink:0;border:1px solid rgba(18,28,46,.15)}
 .cnt{margin-left:auto;color:var(--muted);font-size:11px}
 
 .nums{display:flex;flex-wrap:wrap;gap:4px}
 .numchip{background:var(--white);color:var(--ink);border:1px solid var(--border);border-radius:4px;padding:3px 8px;font-size:12px;cursor:pointer;min-width:28px;text-align:center}
 .numchip:hover{border-color:var(--border-hi);background:var(--hover)}
-.numchip.active{background:var(--mint);border-color:var(--deep-mint);color:var(--ink);font-weight:700}
+.numchip.active{background:var(--blue-2);border-color:var(--deep-blue);color:var(--ink);font-weight:700}
 
 .objlist{display:flex;flex-direction:column;gap:2px;max-height:260px;overflow-y:auto}
 .objitem{padding:4px 7px;border-radius:4px;font-size:12px;cursor:pointer;display:flex;align-items:center;gap:6px;color:var(--ink);border-left:3px solid transparent}
 .objitem:hover{background:var(--hover)}
-.objitem.active{background:var(--mint);color:var(--ink);font-weight:600}
+.objitem.active{background:var(--blue-1);color:var(--ink);font-weight:600}
 .objitem.dim{opacity:.4}
 .objitem .t{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .badge{font-size:10px;padding:1px 5px;border-radius:8px;flex-shrink:0;font-weight:600}
-.badge.ok{background:var(--mint);color:var(--ink);border:1px solid var(--deep-mint)}
-.badge.ng{background:var(--pink-2);color:var(--ink);border:1px solid var(--deep-rose)}
+.badge.ok{background:var(--sage);color:var(--ink);border:1px solid var(--deep-sage)}
+.badge.ng{background:var(--cream);color:var(--ink);border:1px solid var(--deep-terra)}
 
 .detail{font-size:12px;line-height:1.7}
 .detail .row{display:flex;gap:8px}
@@ -83,23 +85,23 @@ label.chk:hover{color:var(--deep-mint)}
 .stbtns{display:flex;gap:5px;margin:8px 0}
 .stbtns button{flex:1;padding:6px;border:1px solid var(--border);background:var(--white);color:var(--ink);border-radius:4px;cursor:pointer;font-size:12px}
 .stbtns button:hover{border-color:var(--border-hi);background:var(--hover)}
-.stbtns button.on-ok{background:var(--mint);border-color:var(--deep-mint);color:var(--ink);font-weight:600}
-.stbtns button.on-ng{background:var(--pink-2);border-color:var(--deep-rose);color:var(--ink);font-weight:600}
-.stbtns button.on-un{background:var(--cyan);border-color:var(--border-hi);color:var(--ink);font-weight:600}
+.stbtns button.on-ok{background:var(--sage);border-color:var(--deep-sage);color:var(--ink);font-weight:600}
+.stbtns button.on-ng{background:var(--cream);border-color:var(--deep-terra);color:var(--ink);font-weight:600}
+.stbtns button.on-un{background:var(--blue-1);border-color:var(--border-hi);color:var(--ink);font-weight:600}
 textarea{width:100%;background:var(--white);border:1px solid var(--border);color:var(--ink);border-radius:4px;padding:6px;font-size:12px;font-family:inherit;resize:vertical;min-height:56px}
-textarea:focus{outline:none;border-color:var(--deep-mint)}
+textarea:focus{outline:none;border-color:var(--deep-blue)}
 
 .bar{height:5px;background:var(--hover);border-radius:3px;overflow:hidden;margin-top:5px}
-.bar i{display:block;height:100%;background:var(--deep-mint);width:0}
+.bar i{display:block;height:100%;background:var(--deep-blue);width:0}
 
 .drop{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:14px;color:var(--muted);text-align:center;padding:24px;pointer-events:none}
 .drop.hide{display:none}
 .drop .big{font-size:15px;color:var(--ink)}
 .drop .sm{font-size:12px;line-height:1.8}
 .drop kbd{background:var(--white);border:1px solid var(--border);border-radius:3px;padding:1px 5px;font-size:11px;color:var(--ink)}
-.center.dragover{outline:2px dashed var(--deep-mint);outline-offset:-8px}
+.center.dragover{outline:2px dashed var(--deep-blue);outline-offset:-8px}
 .hint{position:absolute;left:10px;bottom:8px;font-size:11px;color:var(--muted);pointer-events:none;background:rgba(255,255,255,.88);padding:3px 8px;border-radius:4px}
-.warn{color:var(--deep-rose);font-size:11px;margin-top:5px;line-height:1.5}
+.warn{color:var(--deep-terra);font-size:11px;margin-top:5px;line-height:1.5}
 </style>
 </head>
 <body>
@@ -191,11 +193,11 @@ let labelBoxes = [];      // 렌더 후 라벨 히트박스
 /* 캔버스 색 — 라이트 파스텔 대응.
    #141414/#fff/#7ab8ff 는 밝은 배경에서 보이지 않아 교체.
    JSON 어노테이션 색(extra.color)은 데이터이므로 그대로 둔다. */
-const CANVAS_BG = '#a9d2c9';   /* 흰 스캔용지와 1.65:1 — 용지가 배경에 묻히지 않음 */
-const HI_SEL    = '#0d1f1a';   /* 선택 강조(잉크) */
-const HI_GROUP  = '#b0296b';   /* 번호그룹 강조(딥로즈) */
-const DEEP_MINT = '#0e7c5f';   /* 정상 */
-const DEEP_ROSE = '#c2185b';   /* 오류 */
+const CANVAS_BG = '#8EACCD';   /* 팔레트 색. 흰 스캔용지와 2.35:1 — 용지가 뚜렷이 구분됨 */
+const HI_SEL    = '#121c2e';   /* 선택 강조(잉크) */
+const HI_GROUP  = '#7a5c1f';   /* 번호그룹 강조(딥골드) — JSON 색 5종과 겹치지 않는 톤 */
+const DEEP_OK   = '#5a6b48';   /* 정상(딥세이지) */
+const DEEP_NG   = '#a8523a';   /* 오류(테라코타) — 팔레트에 경고색이 없어 파생 */
 
 const cv = document.getElementById('cv');
 const ctx = cv.getContext('2d');
@@ -532,7 +534,7 @@ function render() {
       ctx.fillRect(it.x0, it.y0, it.w, it.h);
       const rv = getReview(img, it.o);
       if (rv.status) {
-        ctx.fillStyle = rv.status === 'OK' ? DEEP_MINT : DEEP_ROSE;
+        ctx.fillStyle = rv.status === 'OK' ? DEEP_OK : DEEP_NG;
         ctx.fillRect(it.x0, it.y0, Math.max(2, 3 * S), it.h);
       }
       ctx.fillStyle = textColor(it.o.color);
@@ -681,7 +683,7 @@ function renderDetail() {
   const img = images[cur];
   if (!sel) {
     el.innerHTML = selNum
-      ? `<div class="empty">번호 <b style="color:var(--deep-rose)">#${selNum}</b> 그룹 ${img.objs.filter(o => inNumGroup(o, selNum)).length}개 표시 중.<br>객체를 클릭하면 상세가 나옵니다.</div>`
+      ? `<div class="empty">번호 <b style="color:var(--deep-gold)">#${selNum}</b> 그룹 ${img.objs.filter(o => inNumGroup(o, selNum)).length}개 표시 중.<br>객체를 클릭하면 상세가 나옵니다.</div>`
       : '<div class="empty">캔버스에서 객체를 클릭하거나<br>목록에서 선택하세요</div>';
     rs.style.display = 'none';
     return;

@@ -7,27 +7,27 @@
 <style>
 :root{
   /* 팔레트 */
-  --mint:#aafbdc;
-  --cyan:#c0ffee;
-  --pink-1:#ffd6e4;
-  --pink-2:#ffc8d2;
+  --blue-1:#D2E0FB;
+  --cream:#FEF9D9;
+  --sage:#DEE5D4;
+  --blue-2:#8EACCD;
 
   /* 면 */
-  --bg:#f4fffb;
+  --bg:#f7faff;
   --surface:#ffffff;
   --surface-2:#ffffff;
-  --border:#c9e5dd;
-  --border-hi:#8fd3bf;
+  --border:#ccdaf2;
+  --border-hi:#8EACCD;
 
-  /* 글자 — 팔레트에 어두운 색이 없어 파생(대비 확보용) */
-  --text:#0d1f1a;   /* 모든 파스텔 면 위 최저 11.76:1 */
-  --muted:#4a5f59;  /* 모든 파스텔 면 위 최저 4.70:1 */
-  --dim:#4a5f59;
+  /* 글자 — 팔레트가 모두 밝아 대비 확보용 파생 */
+  --text:#121c2e;   /* 모든 면 위 최저 7.25:1 */
+  --muted:#3f5170;  /* 흰/연블루/크림/세이지 위 6.0~8.0:1 (미드블루 면에는 미사용) */
+  --dim:#3f5170;
 
-  --accent:#aafbdc;
-  --accent-hi:#ffc8d2;
-  --accent-soft:rgba(170,251,220,.45);
-  --accent-line:rgba(143,211,191,.55);
+  --accent:#D2E0FB;
+  --accent-hi:#8EACCD;
+  --accent-soft:rgba(210,224,251,.75);
+  --accent-line:rgba(142,172,205,.55);
   --radius:16px;
   --ease:cubic-bezier(.4,0,.2,1);
 }
@@ -54,10 +54,10 @@ body::before{
   inset:0;
   pointer-events:none;
   background:
-    radial-gradient(900px 420px at 50% -150px, var(--cyan), transparent 70%),
-    radial-gradient(720px 360px at 90% 2%, var(--pink-1), transparent 72%),
-    radial-gradient(700px 380px at 6% 16%, var(--mint), transparent 70%);
-  opacity:.8;
+    radial-gradient(900px 420px at 50% -150px, var(--blue-1), transparent 70%),
+    radial-gradient(720px 360px at 90% 2%, var(--cream), transparent 72%),
+    radial-gradient(700px 380px at 6% 16%, var(--sage), transparent 70%);
+  opacity:.85;
 }
 
 /* ===== Header ===== */
@@ -94,7 +94,7 @@ header h1{
   font-weight:650;
   letter-spacing:-0.035em;
   line-height:1.1;
-  background:linear-gradient(180deg,#0d1f1a 25%,#2f6b5a);
+  background:linear-gradient(180deg,#121c2e 25%,#2f5c8f);
   -webkit-background-clip:text;
   background-clip:text;
   color:transparent;
@@ -127,7 +127,7 @@ header p{
   flex-direction:column;
   position:relative;
   overflow:hidden;
-  box-shadow:0 1px 2px rgba(13,31,26,.04),0 8px 24px -16px rgba(13,31,26,.18);
+  box-shadow:0 1px 2px rgba(18,28,46,.04),0 8px 24px -16px rgba(18,28,46,.18);
   transition:border-color .25s var(--ease),transform .25s var(--ease),box-shadow .25s var(--ease);
 }
 /* 상단 하이라이트 라인 */
@@ -143,7 +143,7 @@ header p{
 .card:hover{
   border-color:var(--border-hi);
   transform:translateY(-3px);
-  box-shadow:0 2px 4px rgba(13,31,26,.05),0 18px 36px -18px rgba(13,31,26,.3);
+  box-shadow:0 2px 4px rgba(18,28,46,.05),0 18px 36px -18px rgba(18,28,46,.3);
 }
 .card:hover::before{opacity:1}
 
@@ -165,7 +165,7 @@ header p{
   border-radius:11px;
   transition:background .25s var(--ease);
 }
-.card:hover .card-icon{background:var(--mint)}
+.card:hover .card-icon{background:var(--blue-2)}
 .card h2{
   font-size:17.5px;
   font-weight:600;
@@ -202,7 +202,7 @@ header p{
 
 .card-tags{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:22px}
 .tag{
-  background:var(--cyan);
+  background:var(--cream);
   border:1px solid var(--border);
   color:var(--muted);
   padding:3px 10px;
@@ -222,7 +222,7 @@ header p{
 .card-links a{
   flex:1 1 92px;
   padding:11px 14px;
-  background:var(--mint);
+  background:var(--blue-1);
   border:1px solid transparent;
   color:var(--text);   /* 파스텔 면 위 흰 글자는 대비 붕괴 → 잉크 고정 */
   text-decoration:none;
@@ -234,8 +234,8 @@ header p{
   transition:background .2s var(--ease),border-color .2s var(--ease),transform .2s var(--ease);
 }
 .card-links a:hover{
-  background:var(--pink-2);
-  border-color:var(--pink-2);
+  background:var(--blue-2);
+  border-color:var(--blue-2);
 }
 .card-links a:focus-visible{
   outline:2px solid var(--text);
