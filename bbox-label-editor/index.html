@@ -1,0 +1,998 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BBox Label Editor (JSON 검수)</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #1a1a2e; color: #e0e0e0; font-family: 'Segoe UI', sans-serif; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+
+/* 상단 바 */
+.top-bar { display: flex; align-items: center; gap: 10px; padding: 8px 12px; background: #16213e; border-bottom: 1px solid #333; flex-shrink: 0; }
+.top-bar label { font-size: 13px; color: #aaa; }
+.top-bar input[type="file"] { display: none; }
+.btn { background: #0f3460; color: #e0e0e0; border: none; border-radius: 4px; padding: 6px 14px; font-size: 12px; cursor: pointer; white-space: nowrap; }
+.btn:hover { background: #1a5276; }
+.btn:disabled { background: #333; color: #666; cursor: default; }
+.btn-primary { background: #e94560; color: #fff; font-weight: bold; }
+.btn-primary:hover { background: #d63851; }
+.btn-save { background: #4ecdc4; color: #1a1a2e; font-weight: bold; }
+.btn-save:hover { background: #45b7aa; }
+.btn-csv { background: #f6c744; color: #1a1a2e; font-weight: bold; }
+.btn-csv:hover { background: #e0b430; }
+.btn-toggle { font-size: 11px; padding: 4px 10px; }
+.btn-toggle.active { background: #e94560; color: #fff; }
+.btn-flag { font-size: 11px; padding: 5px 10px; background: #5a2a2a; }
+.btn-flag:hover { background: #7a3535; }
+.btn-flag.active { background: #ff2d2d; color: #fff; font-weight: bold; }
+.status-text { font-size: 12px; color: #aaa; margin-left: auto; }
+
+/* 메인 레이아웃 */
+.main { display: flex; flex: 1; overflow: hidden; }
+
+/* 왼쪽: 파일 목록 */
+.sidebar { width: 300px; min-width: 220px; display: flex; flex-direction: column; border-right: 1px solid #333; background: #16213e; flex-shrink: 0; }
+.search-box { padding: 6px; border-bottom: 1px solid #333; display: flex; gap: 6px; align-items: center; }
+.search-box input { flex: 1; background: #1a1a2e; color: #e0e0e0; border: 1px solid #444; border-radius: 4px; padding: 5px 8px; font-size: 12px; outline: none; }
+.search-box input:focus { border-color: #4ecdc4; }
+.file-list { flex: 1; overflow-y: auto; }
+.file-item { padding: 5px 10px; font-size: 11px; cursor: pointer; border-bottom: 1px solid #1a1a2e; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.file-item:hover { background: #1a3a5c; }
+.file-item.active { background: #0f3460; }
+.file-item.unmatched { color: #888; }
+.file-item.dirty { color: #4ecdc4; }
+.file-item.flagged { color: #ff8080; border-left: 3px solid #ff2d2d; }
+.file-item .badge { display: inline-block; background: #ff2d2d; color: #fff; font-size: 9px; font-weight: bold; border-radius: 8px; padding: 0 5px; margin-left: 4px; }
+.counter { text-align: center; padding: 6px; font-size: 12px; color: #888; border-top: 1px solid #333; flex-shrink: 0; }
+
+/* 오른쪽: 캔버스 + 편집 */
+.content { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+.canvas-wrap { flex: 1; position: relative; overflow: hidden; background: #111; }
+.canvas-wrap canvas { display: block; }
+
+/* 편집 패널 */
+.edit-panel { display: flex; align-items: center; gap: 10px; padding: 8px 12px; background: #16213e; border-top: 1px solid #333; flex-shrink: 0; min-height: 44px; flex-wrap: wrap; }
+.edit-panel .info { font-size: 12px; color: #ccc; flex: 1; min-width: 200px; }
+.edit-panel input[type="text"].label-in { width: 42px; background: #1a1a2e; color: #fff; border: 1px solid #444; border-radius: 4px; padding: 4px; font-size: 14px; text-align: center; text-transform: uppercase; outline: none; }
+.edit-panel input[type="text"].label-in:focus { border-color: #e94560; }
+.edit-panel input[type="text"].reason-in { width: 160px; background: #1a1a2e; color: #fff; border: 1px solid #444; border-radius: 4px; padding: 4px 8px; font-size: 12px; outline: none; }
+.edit-panel input[type="text"].reason-in:focus { border-color: #ff2d2d; }
+
+/* 좌표 편집 패널 */
+.coord-panel { display: flex; align-items: center; gap: 6px; padding: 4px 12px; background: #0d1117; border-top: 1px solid #222; flex-shrink: 0; min-height: 10px; }
+.coord-panel label { font-size: 11px; color: #888; }
+.coord-panel input[type="number"] { width: 60px; background: #16213e; color: #e0e0e0; border: 1px solid #444; border-radius: 3px; padding: 3px 5px; font-size: 11px; outline: none; }
+.coord-panel input[type="number"]:focus { border-color: #4ecdc4; }
+.coord-panel input:disabled { background: #111; color: #555; }
+
+/* VIN 스트립 */
+.vin-strip { display: flex; gap: 3px; padding: 4px 12px; background: #0d1117; border-top: 1px solid #222; flex-shrink: 0; min-height: 10px; flex-wrap: wrap; }
+.vin-char { width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; background: #16213e; color: #e0e0e0; border: 1px solid #444; border-radius: 3px; font-size: 13px; font-weight: bold; font-family: Consolas, monospace; cursor: pointer; flex-shrink: 0; position: relative; }
+.vin-char:hover { background: #1a5276; border-color: #4ecdc4; }
+.vin-char.selected { background: #e94560; color: #fff; border-color: #fff; }
+.vin-char.flagged { background: #ff2d2d; color: #fff; border-color: #fff; }
+
+/* 하단 */
+.bottom-bar { display: flex; align-items: center; gap: 10px; padding: 6px 12px; background: #16213e; border-top: 1px solid #333; flex-shrink: 0; }
+.bottom-bar .status { flex: 1; font-size: 12px; color: #aaa; }
+
+/* 스크롤바 */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: #1a1a2e; }
+::-webkit-scrollbar-thumb { background: #444; border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<!-- 상단 바 -->
+<div class="top-bar">
+    <label>데이터 로드:</label>
+    <input type="file" id="folderInput" webkitdirectory multiple>
+    <button class="btn btn-primary" onclick="document.getElementById('folderInput').click()">이미지 폴더 열기</button>
+    <input type="file" id="jsonInput" accept=".json,.ndjson,.txt">
+    <button class="btn btn-save" onclick="document.getElementById('jsonInput').click()">JSON 열기</button>
+    <span class="status-text" id="topStatus">이미지 폴더와 JSON을 선택하세요</span>
+</div>
+
+<!-- 메인 -->
+<div class="main">
+    <!-- 왼쪽 사이드바 -->
+    <div class="sidebar">
+        <div class="search-box">
+            <input type="text" id="searchInput" placeholder="검색 (파일명 / dataID)">
+            <button class="btn btn-toggle" id="btnProblemOnly" onclick="toggleProblemOnly()">문제만</button>
+        </div>
+        <div class="file-list" id="fileList"></div>
+        <div class="counter" id="counter">0 / 0</div>
+    </div>
+
+    <!-- 오른쪽 -->
+    <div class="content">
+        <div class="canvas-wrap" id="canvasWrap">
+            <canvas id="canvas"></canvas>
+        </div>
+        <div class="edit-panel">
+            <span class="info" id="boxInfo">이미지 폴더와 JSON을 로드하세요</span>
+            <button class="btn btn-toggle active" id="btnViewMode" onclick="toggleViewMode()">전체 박스</button>
+            <button class="btn btn-toggle active" id="btnFitBoxes" onclick="toggleFitBoxes()">&#128269; 박스영역</button>
+            <label style="font-size:12px;color:#aaa;">새 라벨:</label>
+            <input type="text" class="label-in" id="labelInput" maxlength="1" disabled>
+            <button class="btn btn-primary" id="btnApply" disabled onclick="applyLabel()">적용</button>
+            <button class="btn" id="btnNextBox" disabled onclick="nextBox()">다음 박스 &rarr;</button>
+            <button class="btn btn-flag" id="btnFlagBox" disabled onclick="toggleBoxFlag()">&#9873; 박스 문제</button>
+            <button class="btn btn-flag" id="btnFlagFrame" disabled onclick="toggleFrameFlag()">&#9873; 프레임 문제</button>
+            <button class="btn btn-flag" id="btnUnable" disabled onclick="toggleUnable()">&#128683; 작업 불가</button>
+            <label style="font-size:12px;color:#aaa;">사유:</label>
+            <input type="text" class="reason-in" id="flagReasonInput" placeholder="문제 사유 (선택)" disabled>
+        </div>
+        <div class="coord-panel" id="coordPanel">
+            <label>xmin:</label><input type="number" id="coordXmin" disabled>
+            <label>ymin:</label><input type="number" id="coordYmin" disabled>
+            <label>xmax:</label><input type="number" id="coordXmax" disabled>
+            <label>ymax:</label><input type="number" id="coordYmax" disabled>
+            <button class="btn" id="btnCoordApply" disabled onclick="applyCoords()" style="font-size:11px;padding:3px 10px;">좌표 적용</button>
+        </div>
+        <div class="vin-strip" id="vinStrip"></div>
+    </div>
+</div>
+
+<!-- 하단 -->
+<div class="bottom-bar">
+    <span class="status" id="bottomStatus">준비</span>
+    <button class="btn btn-save" onclick="saveJson()">&#128190; 교정 JSON 저장 (Ctrl+S)</button>
+    <button class="btn" onclick="undo()">&#8617; 되돌리기 (Ctrl+Z)</button>
+    <button class="btn btn-csv" onclick="exportCsv()">&#128229; 문제 dataID CSV 추출</button>
+</div>
+
+<script>
+// ── 상태 ──────────────────────────────────────────────────
+// entry: {dataID, filename, imageFile, record, nameKey, boxes[], dirty, frameFlag, frameReason, hasRecord, hasImage}
+// box:   {objectID, srcData, xmin, ymin, xmax, ymax, angle, label, modified, flagged, flagReason}
+let entries = [];
+let currentIndex = -1;
+let selectedBox = null;
+let undoStack = [];
+let currentImage = null;
+let viewMode = 'all';
+let problemOnly = false;
+let fitToBoxes = true;   // 박스 영역만 확대 표시 (기본 ON)
+
+let loadedImages = {};    // { filename: File }
+let loadedRecords = [];   // [ record ]
+let jsonFileName = 'result.json';
+
+const COLORS = [
+    "#FF4444","#44FF44","#4488FF","#FFFF44","#FF44FF","#44FFFF",
+    "#FF8844","#8844FF","#4488FF","#FF4488","#88FF44","#44FF88",
+];
+
+const num = (x) => (typeof x === 'number' ? x : parseFloat(x) || 0);
+
+// 배경색 밝기에 따라 대비가 좋은 글자색(검정/흰색) 선택
+function textColorFor(hex) {
+    const m = /^#?([0-9a-f]{6})$/i.exec(hex || '');
+    if (!m) return '#fff';
+    const n = parseInt(m[1], 16);
+    const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+    const lum = 0.299 * r + 0.587 * g + 0.114 * b;   // 지각 밝기
+    return lum > 150 ? '#000' : '#fff';
+}
+
+// ── 이미지 폴더 로드 ──────────────────────────────────────
+document.getElementById('folderInput').addEventListener('change', (e) => {
+    const files = Array.from(e.target.files);
+    if (!files.length) return;
+    loadedImages = {};
+    for (const f of files) {
+        const lower = f.name.toLowerCase();
+        if (lower.endsWith('.jpg') || lower.endsWith('.jpeg') || lower.endsWith('.png') || lower.endsWith('.bmp')) {
+            loadedImages[f.name] = f;
+        }
+    }
+    rebuildEntries();
+});
+
+// ── JSON(NDJSON) 로드 ─────────────────────────────────────
+document.getElementById('jsonInput').addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    jsonFileName = file.name;
+    const text = await file.text();
+    const records = [];
+    let badLines = 0;
+    text.split(/\r?\n/).forEach(line => {
+        const t = line.trim();
+        if (!t) return;
+        try { records.push(JSON.parse(t)); }
+        catch { badLines++; }
+    });
+    if (!records.length) { alert('유효한 JSON 레코드를 찾지 못했습니다.'); return; }
+    loadedRecords = records;
+    if (badLines) console.warn(`${badLines}개 라인 파싱 실패`);
+    rebuildEntries();
+});
+
+function nameKeyOf(record) {
+    for (const k in record) { if (k.startsWith('name_')) return k; }
+    return null;
+}
+
+function parseBoxes(record, nameKey) {
+    const boxes = [];
+    const data = (record[nameKey] && record[nameKey].data) || [];
+    data.forEach((d) => {
+        const v = d.value || {};
+        const o = v.object || {};
+        const left = num(o.left), top = num(o.top), w = num(o.width), h = num(o.height);
+        boxes.push({
+            objectID: d.objectID || '',
+            srcData: d,
+            xmin: Math.round(left),
+            ymin: Math.round(top),
+            xmax: Math.round(left + w),
+            ymax: Math.round(top + h),
+            angle: num(o.angle),
+            label: v.label_symbol != null ? String(v.label_symbol) : '',
+            modified: false,
+            flagged: false,
+            flagReason: '',
+        });
+    });
+    boxes.sort((a, b) => a.xmin - b.xmin);
+    return boxes;
+}
+
+// ── entries 재구성 (이미지/JSON 로드 시) ──────────────────
+function rebuildEntries() {
+    const usedImg = new Set();
+    const list = [];
+
+    // JSON 레코드 기준 entry
+    loadedRecords.forEach(rec => {
+        const nk = nameKeyOf(rec);
+        const fn = rec.importData_file_name || (nk && rec[nk] && rec[nk].sourceValue) || '';
+        const img = loadedImages[fn] || null;
+        if (img) usedImg.add(fn);
+        list.push({
+            dataID: rec.dataID != null ? String(rec.dataID) : '',
+            filename: fn,
+            imageFile: img,
+            record: rec,
+            nameKey: nk,
+            boxes: nk ? parseBoxes(rec, nk) : [],
+            dirty: false,
+            frameFlag: false,
+            frameReason: '',
+            unableToWork: false,
+            unableReason: '',
+            hasRecord: true,
+            hasImage: !!img,
+        });
+    });
+
+    // 레코드 없는 이미지(작업불가) entry
+    Object.entries(loadedImages).forEach(([name, f]) => {
+        if (usedImg.has(name)) return;
+        list.push({
+            dataID: '', filename: name, imageFile: f, record: null, nameKey: null,
+            boxes: [], dirty: false, frameFlag: false, frameReason: '',
+            unableToWork: false, unableReason: '',
+            hasRecord: false, hasImage: true,
+        });
+    });
+
+    // 정렬: (레코드+이미지) → (레코드만) → (이미지만)
+    const rank = (e) => (e.hasRecord && e.hasImage) ? 0 : (e.hasRecord ? 1 : 2);
+    list.sort((a, b) => (rank(a) - rank(b)) || a.filename.localeCompare(b.filename));
+
+    entries = list;
+    undoStack = [];
+    currentIndex = -1;
+    selectedBox = null;
+    populateList();
+    updateStatusFromEntries();
+
+    const withImg = entries.filter(e => e.hasRecord && e.hasImage).length;
+    const noImg = entries.filter(e => e.hasRecord && !e.hasImage).length;
+    document.getElementById('topStatus').textContent =
+        `레코드 ${loadedRecords.length}개 · 매칭 이미지 ${withImg}개` + (noImg ? ` · 이미지없음 ${noImg}개` : '');
+
+    if (entries.length > 0) selectEntry(0);
+}
+
+// ── 파일 목록 ─────────────────────────────────────────────
+function entryLabelText(entry) {
+    const flags = entry.boxes.filter(b => b.flagged).length;
+    let prefix = '';
+    if (!entry.hasRecord) prefix += '[작업불가] ';
+    else if (!entry.hasImage) prefix += '[이미지없음] ';
+    if (entry.unableToWork) prefix += '🚫 ';
+    if (entry.frameFlag) prefix += '⚑ ';
+    if (entry.dirty) prefix += '* ';
+    const idPart = entry.dataID ? entry.dataID + ' · ' : '';
+    return { text: prefix + idPart + entry.filename, flags };
+}
+
+function itemClass(entry, idx) {
+    let cls = 'file-item';
+    if (!entry.hasRecord) cls += ' unmatched';
+    if (entry.dirty) cls += ' dirty';
+    if (entry.frameFlag || entry.unableToWork || entry.boxes.some(b => b.flagged)) cls += ' flagged';
+    if (idx === currentIndex) cls += ' active';
+    return cls;
+}
+
+function renderItem(div, entry, idx) {
+    const { text, flags } = entryLabelText(entry);
+    div.className = itemClass(entry, idx);
+    div.textContent = text;
+    if (flags > 0) {
+        const b = document.createElement('span');
+        b.className = 'badge';
+        b.textContent = '⚑' + flags;
+        div.appendChild(b);
+    }
+}
+
+function populateList() {
+    const list = document.getElementById('fileList');
+    list.innerHTML = '';
+    entries.forEach((entry, i) => {
+        const div = document.createElement('div');
+        div.dataset.index = i;
+        div.onclick = () => selectEntry(i);
+        renderItem(div, entry, i);
+        list.appendChild(div);
+    });
+    applyListFilter();
+}
+
+function updateListItem(idx) {
+    const items = document.querySelectorAll('#fileList .file-item');
+    if (!items[idx]) return;
+    items[idx].innerHTML = '';
+    renderItem(items[idx], entries[idx], idx);
+    applyListFilter();
+}
+
+function isProblem(entry) {
+    return entry.frameFlag || entry.unableToWork || entry.boxes.some(b => b.flagged);
+}
+
+function applyListFilter() {
+    const q = document.getElementById('searchInput').value.toLowerCase();
+    document.querySelectorAll('#fileList .file-item').forEach((el, i) => {
+        const e = entries[i];
+        const matchQ = !q || e.filename.toLowerCase().includes(q) || (e.dataID && e.dataID.includes(q));
+        const matchP = !problemOnly || isProblem(e);
+        el.style.display = (matchQ && matchP) ? '' : 'none';
+    });
+}
+
+document.getElementById('searchInput').addEventListener('input', applyListFilter);
+
+function toggleProblemOnly() {
+    problemOnly = !problemOnly;
+    const btn = document.getElementById('btnProblemOnly');
+    btn.className = 'btn btn-toggle' + (problemOnly ? ' active' : '');
+    applyListFilter();
+}
+
+// ── 이미지 표시 ───────────────────────────────────────────
+function selectEntry(idx) {
+    if (idx < 0 || idx >= entries.length) return;
+
+    document.querySelectorAll('#fileList .file-item').forEach(el => el.classList.remove('active'));
+    const items = document.querySelectorAll('#fileList .file-item');
+    if (items[idx]) { items[idx].classList.add('active'); items[idx].scrollIntoView({ block: 'nearest' }); }
+
+    currentIndex = idx;
+    selectedBox = null;
+    const entry = entries[idx];
+
+    currentImage = null;
+    if (entry.imageFile) {
+        const url = URL.createObjectURL(entry.imageFile);
+        const img = new Image();
+        img.onload = () => { currentImage = img; drawCanvas(); URL.revokeObjectURL(url); };
+        img.src = url;
+    } else {
+        drawCanvas();
+    }
+
+    const hasBoxes = entry.boxes.length > 0 && entry.hasRecord;
+    document.getElementById('labelInput').disabled = true;
+    document.getElementById('btnApply').disabled = true;
+    document.getElementById('btnNextBox').disabled = !hasBoxes;
+    document.getElementById('btnFlagBox').disabled = true;
+    document.getElementById('btnFlagFrame').disabled = !entry.hasRecord;
+    document.getElementById('btnUnable').disabled = !entry.hasRecord;
+    document.getElementById('flagReasonInput').disabled = !entry.hasRecord;
+    document.getElementById('flagReasonInput').value =
+        entry.unableToWork ? (entry.unableReason || '') : (entry.frameFlag ? (entry.frameReason || '') : '');
+    setCoordInputsEnabled(false);
+    updateFlagButtons();
+
+    if (!entry.hasRecord) {
+        document.getElementById('boxInfo').textContent = '어노테이션 데이터 없음 (작업 불가)';
+    } else if (!entry.hasImage) {
+        document.getElementById('boxInfo').textContent = '이미지 없음 — 이미지 폴더를 로드하세요';
+    } else if (entry.boxes.length === 0) {
+        document.getElementById('boxInfo').textContent = '어노테이션 없음 (빈 프레임)';
+    } else {
+        document.getElementById('boxInfo').textContent = '박스를 클릭하여 선택하세요';
+    }
+
+    updateVinStrip();
+    document.getElementById('counter').textContent = `${idx + 1} / ${entries.length}`;
+}
+
+// ── 캔버스 그리기 ─────────────────────────────────────────
+function drawCanvas() {
+    const wrap = document.getElementById('canvasWrap');
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+
+    const ww = wrap.clientWidth;
+    const wh = wrap.clientHeight;
+    canvas.width = ww;
+    canvas.height = wh;
+    ctx.clearRect(0, 0, ww, wh);
+
+    if (!currentImage) {
+        if (currentIndex >= 0 && !entries[currentIndex].hasImage) {
+            ctx.fillStyle = '#666';
+            ctx.font = '16px "Malgun Gothic", sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText('이미지 없음', ww / 2, wh / 2);
+        }
+        return;
+    }
+
+    const iw = currentImage.width;
+    const ih = currentImage.height;
+
+    // 표시 영역(ROI) 결정: 박스영역 확대 모드면 박스 union, 아니면 전체 이미지
+    const entry0 = currentIndex >= 0 ? entries[currentIndex] : null;
+    let rx0 = 0, ry0 = 0, rw = iw, rh = ih;
+    if (fitToBoxes && entry0 && entry0.boxes.length) {
+        let minx = Infinity, miny = Infinity, maxx = -Infinity, maxy = -Infinity;
+        entry0.boxes.forEach(b => {
+            minx = Math.min(minx, b.xmin); miny = Math.min(miny, b.ymin);
+            maxx = Math.max(maxx, b.xmax); maxy = Math.max(maxy, b.ymax);
+        });
+        const padX = Math.max(20, (maxx - minx) * 0.08);
+        const padY = Math.max(20, (maxy - miny) * 0.15);
+        rx0 = Math.max(0, minx - padX);
+        ry0 = Math.max(0, miny - padY);
+        const rx1 = Math.min(iw, maxx + padX);
+        const ry1 = Math.min(ih, maxy + padY);
+        rw = Math.max(1, rx1 - rx0);
+        rh = Math.max(1, ry1 - ry0);
+    }
+
+    const scale = Math.min(ww / rw, wh / rh);
+    const sw = rw * scale;
+    const sh = rh * scale;
+    const ox = (ww - sw) / 2;
+    const oy = (wh - sh) / 2;
+
+    canvas._scale = scale;
+    canvas._ox = ox;
+    canvas._oy = oy;
+    canvas._rx0 = rx0;
+    canvas._ry0 = ry0;
+
+    ctx.drawImage(currentImage, rx0, ry0, rw, rh, ox, oy, sw, sh);
+
+    if (currentIndex < 0) return;
+    const entry = entries[currentIndex];
+
+    const colorMap = {};
+    let ci = 0;
+    entry.boxes.forEach(b => { if (!(b.label in colorMap)) { colorMap[b.label] = COLORS[ci++ % COLORS.length]; } });
+
+    entry.boxes.forEach((box, i) => {
+        if (viewMode === 'single' && selectedBox !== null && i !== selectedBox) return;
+
+        const x1 = ox + (box.xmin - rx0) * scale;
+        const y1 = oy + (box.ymin - ry0) * scale;
+        const x2 = ox + (box.xmax - rx0) * scale;
+        const y2 = oy + (box.ymax - ry0) * scale;
+        const bw = x2 - x1;
+        const bh = y2 - y1;
+
+        const isSel = (i === selectedBox);
+        let color = isSel ? '#FFFFFF' : (colorMap[box.label] || '#CCCCCC');
+        let lw = 1;
+
+        // 문제 플래그 박스 강조
+        if (box.flagged) {
+            ctx.fillStyle = 'rgba(255, 45, 45, 0.22)';
+            ctx.fillRect(x1, y1, bw, bh);
+            color = '#ff2d2d';
+            lw = 1;
+        }
+
+        ctx.strokeStyle = color;
+        ctx.lineWidth = lw;
+        ctx.strokeRect(x1, y1, bw, bh);
+
+        ctx.font = 'bold 12px Consolas, monospace';
+        const tm = ctx.measureText(box.label);
+        const tw = tm.width + 6;
+        const th = 16;
+        const ly = y1 - th > oy ? y1 - th : y1;
+        ctx.fillStyle = color;
+        ctx.fillRect(x1, ly, tw, th);
+        ctx.fillStyle = textColorFor(color);
+        ctx.fillText(box.label, x1 + 3, ly + 12);
+
+        ctx.fillStyle = color;
+        ctx.font = 'bold 10px Consolas';
+        ctx.fillText(String(i + 1), x2 - 12, y2 - 3);
+    });
+
+    // 프레임 문제 배너
+    if (entry.frameFlag) {
+        ctx.strokeStyle = '#ff2d2d';
+        ctx.lineWidth = 5;
+        ctx.strokeRect(ox + 2, oy + 2, sw - 4, sh - 4);
+        const txt = '⚑ 프레임 문제' + (entry.frameReason ? ' — ' + entry.frameReason : '');
+        ctx.font = 'bold 14px "Malgun Gothic", sans-serif';
+        ctx.textAlign = 'left';
+        const bw2 = ctx.measureText(txt).width + 12;
+        ctx.fillStyle = 'rgba(255, 45, 45, 0.85)';
+        ctx.fillRect(ox + 4, oy + 4, bw2, 22);
+        ctx.fillStyle = '#fff';
+        ctx.fillText(txt, ox + 10, oy + 19);
+    }
+
+    // 작업 불가 (수동 처리) 오버레이
+    if (entry.unableToWork && entry.hasRecord) {
+        ctx.fillStyle = 'rgba(30, 30, 30, 0.55)';
+        ctx.fillRect(ox, oy, sw, sh);
+        ctx.strokeStyle = '#ffb000';
+        ctx.lineWidth = 6;
+        ctx.strokeRect(ox + 3, oy + 3, sw - 6, sh - 6);
+        ctx.save();
+        ctx.translate(ox + sw / 2, oy + sh / 2);
+        ctx.fillStyle = 'rgba(255, 176, 0, 0.95)';
+        ctx.font = 'bold 34px "Malgun Gothic", sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('🚫 작 업 불 가', 0, 0);
+        if (entry.unableReason) {
+            ctx.fillStyle = '#fff';
+            ctx.font = 'bold 16px "Malgun Gothic", sans-serif';
+            ctx.fillText(entry.unableReason, 0, 30);
+        }
+        ctx.restore();
+    }
+
+    // 작업 불가 배너
+    if (!entry.hasRecord) {
+        const bannerW = sw * 0.18;
+        ctx.fillStyle = 'rgba(220, 50, 50, 0.6)';
+        ctx.fillRect(ox, oy, bannerW, sh);
+        ctx.save();
+        ctx.translate(ox + bannerW / 2, oy + sh / 2);
+        ctx.rotate(-Math.PI / 2);
+        ctx.fillStyle = '#fff';
+        ctx.font = 'bold 18px "Malgun Gothic", sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('작 업 불 가', 0, 6);
+        ctx.restore();
+    }
+}
+
+window.addEventListener('resize', () => { if (currentImage) drawCanvas(); });
+new ResizeObserver(() => { if (currentImage) drawCanvas(); }).observe(document.getElementById('canvasWrap'));
+
+// ── 캔버스 클릭 (박스 선택) ───────────────────────────────
+document.getElementById('canvas').addEventListener('click', (e) => {
+    if (currentIndex < 0) return;
+    const entry = entries[currentIndex];
+    if (!entry.hasRecord || !entry.boxes.length) return;
+
+    const canvas = document.getElementById('canvas');
+    const rect = canvas.getBoundingClientRect();
+    const cx = e.clientX - rect.left;
+    const cy = e.clientY - rect.top;
+    const mx = (canvas._rx0 || 0) + (cx - canvas._ox) / canvas._scale;
+    const my = (canvas._ry0 || 0) + (cy - canvas._oy) / canvas._scale;
+
+    for (let i = entry.boxes.length - 1; i >= 0; i--) {
+        const b = entry.boxes[i];
+        if (mx >= b.xmin && mx <= b.xmax && my >= b.ymin && my <= b.ymax) {
+            selectBox(i);
+            return;
+        }
+    }
+    deselectBox();
+});
+
+function selectBox(idx) {
+    if (currentIndex < 0) return;
+    const entry = entries[currentIndex];
+    if (idx >= entry.boxes.length) return;
+    selectedBox = idx;
+    const box = entry.boxes[idx];
+    document.getElementById('boxInfo').textContent =
+        `박스 #${idx+1}/${entry.boxes.length}  |  라벨: [${box.label}]  |  (${box.xmin},${box.ymin})-(${box.xmax},${box.ymax})` +
+        (box.flagged ? '  |  ⚑ 문제' : '');
+    document.getElementById('labelInput').disabled = false;
+    document.getElementById('btnApply').disabled = false;
+    document.getElementById('btnFlagBox').disabled = false;
+    document.getElementById('labelInput').value = box.label;
+    document.getElementById('labelInput').select();
+    document.getElementById('labelInput').focus();
+    document.getElementById('coordXmin').value = box.xmin;
+    document.getElementById('coordYmin').value = box.ymin;
+    document.getElementById('coordXmax').value = box.xmax;
+    document.getElementById('coordYmax').value = box.ymax;
+    setCoordInputsEnabled(true);
+    updateFlagButtons();
+    updateVinStrip();
+    drawCanvas();
+}
+
+function deselectBox() {
+    selectedBox = null;
+    document.getElementById('labelInput').disabled = true;
+    document.getElementById('labelInput').value = '';
+    document.getElementById('btnApply').disabled = true;
+    document.getElementById('btnFlagBox').disabled = true;
+    setCoordInputsEnabled(false);
+    if (currentIndex >= 0) {
+        const entry = entries[currentIndex];
+        document.getElementById('boxInfo').textContent = entry.hasRecord ? '박스를 클릭하여 선택하세요' : '어노테이션 데이터 없음 (작업 불가)';
+        document.getElementById('flagReasonInput').value = entry.frameFlag ? (entry.frameReason || '') : '';
+    }
+    updateFlagButtons();
+    updateVinStrip();
+    drawCanvas();
+}
+
+// ── 라벨 편집 ─────────────────────────────────────────────
+function applyLabel() {
+    if (selectedBox === null || currentIndex < 0) return;
+    const entry = entries[currentIndex];
+    const box = entry.boxes[selectedBox];
+    const newLabel = document.getElementById('labelInput').value.trim().toUpperCase();
+
+    if (!newLabel || !/^[A-Z0-9*\-]$/.test(newLabel)) {
+        alert('라벨은 A-Z, 0-9, -, * 중 하나여야 합니다.');
+        return;
+    }
+    if (newLabel === box.label) { nextBox(); return; }
+
+    const oldLabel = box.label;
+    box.label = newLabel;
+    box.modified = true;
+    entry.dirty = true;
+    box.srcData.value.label_symbol = newLabel;   // JSON 원본 갱신
+
+    undoStack.push({ type: 'label', entryIdx: currentIndex, boxIdx: selectedBox, oldLabel, newLabel });
+    updateListItem(currentIndex);
+    updateStatusFromEntries();
+    updateVinStrip();
+    drawCanvas();
+
+    document.getElementById('boxInfo').textContent =
+        `박스 #${selectedBox+1}/${entry.boxes.length}  |  라벨: [${newLabel}]  |  (${box.xmin},${box.ymin})-(${box.xmax},${box.ymax})`;
+
+    nextBox();
+}
+
+function nextBox() {
+    if (currentIndex < 0) return;
+    const entry = entries[currentIndex];
+    if (!entry.boxes.length) return;
+    const next = selectedBox === null ? 0 : (selectedBox + 1) % entry.boxes.length;
+    selectBox(next);
+}
+
+function prevBox() {
+    if (currentIndex < 0) return;
+    const entry = entries[currentIndex];
+    if (!entry.boxes.length) return;
+    const prev = selectedBox === null ? entry.boxes.length - 1 : (selectedBox - 1 + entry.boxes.length) % entry.boxes.length;
+    selectBox(prev);
+}
+
+// ── VIN 스트립 ────────────────────────────────────────────
+function updateVinStrip() {
+    const strip = document.getElementById('vinStrip');
+    strip.innerHTML = '';
+    if (currentIndex < 0) return;
+    const entry = entries[currentIndex];
+    if (!entry.hasRecord) return;
+    entry.boxes.forEach((box, i) => {
+        const el = document.createElement('div');
+        el.className = 'vin-char' + (i === selectedBox ? ' selected' : (box.flagged ? ' flagged' : ''));
+        el.textContent = box.label;
+        el.title = box.flagged && box.flagReason ? box.flagReason : '';
+        el.onclick = () => selectBox(i);
+        strip.appendChild(el);
+    });
+}
+
+// ── 문제 플래그 ───────────────────────────────────────────
+function updateFlagButtons() {
+    const btnBox = document.getElementById('btnFlagBox');
+    const btnFrame = document.getElementById('btnFlagFrame');
+    const entry = currentIndex >= 0 ? entries[currentIndex] : null;
+    const box = (entry && selectedBox !== null) ? entry.boxes[selectedBox] : null;
+    btnBox.className = 'btn btn-flag' + (box && box.flagged ? ' active' : '');
+    btnFrame.className = 'btn btn-flag' + (entry && entry.frameFlag ? ' active' : '');
+    document.getElementById('btnUnable').className = 'btn btn-flag' + (entry && entry.unableToWork ? ' active' : '');
+}
+
+function toggleBoxFlag() {
+    if (currentIndex < 0 || selectedBox === null) return;
+    const entry = entries[currentIndex];
+    const box = entry.boxes[selectedBox];
+    box.flagged = !box.flagged;
+    box.flagReason = box.flagged ? document.getElementById('flagReasonInput').value.trim() : '';
+    updateFlagButtons();
+    updateListItem(currentIndex);
+    updateStatusFromEntries();
+    updateVinStrip();
+    drawCanvas();
+    document.getElementById('boxInfo').textContent =
+        `박스 #${selectedBox+1}/${entry.boxes.length}  |  라벨: [${box.label}]  |  ` + (box.flagged ? '⚑ 문제로 표시됨' : '문제 표시 해제');
+}
+
+function toggleFrameFlag() {
+    if (currentIndex < 0) return;
+    const entry = entries[currentIndex];
+    if (!entry.hasRecord) return;
+    entry.frameFlag = !entry.frameFlag;
+    entry.frameReason = entry.frameFlag ? document.getElementById('flagReasonInput').value.trim() : '';
+    updateFlagButtons();
+    updateListItem(currentIndex);
+    updateStatusFromEntries();
+    drawCanvas();
+}
+
+function toggleUnable() {
+    if (currentIndex < 0) return;
+    const entry = entries[currentIndex];
+    if (!entry.hasRecord) return;
+    entry.unableToWork = !entry.unableToWork;
+    entry.unableReason = entry.unableToWork ? document.getElementById('flagReasonInput').value.trim() : '';
+    updateFlagButtons();
+    updateListItem(currentIndex);
+    updateStatusFromEntries();
+    drawCanvas();
+    document.getElementById('boxInfo').textContent = entry.unableToWork
+        ? '🚫 작업 불가 처리됨 — 저장 시 이 프레임의 어노테이션은 JSON에서 삭제됩니다'
+        : '작업 불가 해제';
+}
+
+// ── 좌표 편집 ─────────────────────────────────────────────
+function setCoordInputsEnabled(enabled) {
+    ['coordXmin','coordYmin','coordXmax','coordYmax'].forEach(id => {
+        document.getElementById(id).disabled = !enabled;
+        if (!enabled) document.getElementById(id).value = '';
+    });
+    document.getElementById('btnCoordApply').disabled = !enabled;
+}
+
+function writeCoordsToSrc(box) {
+    box.srcData.value.object = {
+        left: box.xmin, top: box.ymin,
+        width: box.xmax - box.xmin, height: box.ymax - box.ymin,
+        angle: box.angle || 0,
+    };
+    box.srcData.value.coords = {
+        tl: { x: box.xmin, y: box.ymin },
+        tr: { x: box.xmax, y: box.ymin },
+        bl: { x: box.xmin, y: box.ymax },
+        br: { x: box.xmax, y: box.ymax },
+    };
+}
+
+function applyCoords() {
+    if (selectedBox === null || currentIndex < 0) return;
+    const entry = entries[currentIndex];
+    const box = entry.boxes[selectedBox];
+
+    const newXmin = parseInt(document.getElementById('coordXmin').value);
+    const newYmin = parseInt(document.getElementById('coordYmin').value);
+    const newXmax = parseInt(document.getElementById('coordXmax').value);
+    const newYmax = parseInt(document.getElementById('coordYmax').value);
+
+    if (isNaN(newXmin) || isNaN(newYmin) || isNaN(newXmax) || isNaN(newYmax)) {
+        alert('모든 좌표를 숫자로 입력하세요.'); return;
+    }
+    if (newXmin >= newXmax || newYmin >= newYmax) {
+        alert('xmin < xmax, ymin < ymax 이어야 합니다.'); return;
+    }
+
+    const oldCoords = { xmin: box.xmin, ymin: box.ymin, xmax: box.xmax, ymax: box.ymax };
+    box.xmin = newXmin; box.ymin = newYmin; box.xmax = newXmax; box.ymax = newYmax;
+    box.modified = true;
+    entry.dirty = true;
+    writeCoordsToSrc(box);
+
+    undoStack.push({ type: 'coords', entryIdx: currentIndex, boxIdx: selectedBox, oldLabel: box.label, newLabel: box.label, oldCoords, newCoords: { xmin: newXmin, ymin: newYmin, xmax: newXmax, ymax: newYmax } });
+    updateListItem(currentIndex);
+    updateStatusFromEntries();
+    drawCanvas();
+
+    document.getElementById('boxInfo').textContent =
+        `박스 #${selectedBox+1}/${entry.boxes.length}  |  라벨: [${box.label}]  |  (${box.xmin},${box.ymin})-(${box.xmax},${box.ymax})`;
+}
+
+// ── 되돌리기 ──────────────────────────────────────────────
+function undo() {
+    if (!undoStack.length) return;
+    const action = undoStack.pop();
+    const { entryIdx, boxIdx, oldLabel } = action;
+    const entry = entries[entryIdx];
+    const box = entry.boxes[boxIdx];
+
+    box.label = oldLabel;
+    box.srcData.value.label_symbol = oldLabel;
+
+    if (action.oldCoords) {
+        box.xmin = action.oldCoords.xmin;
+        box.ymin = action.oldCoords.ymin;
+        box.xmax = action.oldCoords.xmax;
+        box.ymax = action.oldCoords.ymax;
+        writeCoordsToSrc(box);
+    }
+
+    box.modified = false;
+    entry.dirty = entry.boxes.some(b => b.modified);
+    updateListItem(entryIdx);
+    updateStatusFromEntries();
+    if (entryIdx === currentIndex) {
+        updateVinStrip();
+        drawCanvas();
+        if (selectedBox === boxIdx) selectBox(boxIdx);
+    }
+}
+
+// ── 교정 JSON 저장 ────────────────────────────────────────
+function saveJson() {
+    const recEntries = entries.filter(e => e.record);
+    if (!recEntries.length) { alert('저장할 JSON 데이터가 없습니다.'); return; }
+    // 편집 내용은 이미 각 record(srcData)에 반영되어 있음 → 그대로 직렬화
+    // 작업 불가로 표시된 프레임은 어노테이션(data)을 비우고 unableToWork=1 로 저장 (원본 in-memory는 보존)
+    const ndjson = recEntries.map(e => {
+        if (e.unableToWork) {
+            const clone = Object.assign({}, e.record, { unableToWork: 1 });
+            if (e.nameKey && clone[e.nameKey]) {
+                clone[e.nameKey] = Object.assign({}, clone[e.nameKey], { data: [] });
+            }
+            return JSON.stringify(clone);
+        }
+        return JSON.stringify(e.record);
+    }).join('\n') + '\n';
+    const blob = new Blob([ndjson], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = jsonFileName.replace(/\.[^.]+$/, '') + '_reviewed.json';
+    a.click();
+    URL.revokeObjectURL(a.href);
+
+    const dirtyCount = entries.filter(e => e.dirty).length;
+    entries.forEach(e => { e.dirty = false; e.boxes.forEach(b => b.modified = false); });
+    populateList();
+    if (currentIndex >= 0) selectEntry(currentIndex);
+    updateStatusFromEntries();
+    alert(`교정 JSON 저장 완료 (${recEntries.length}개 레코드, 수정 ${dirtyCount}건).`);
+}
+
+// ── CSV 이스케이프 ────────────────────────────────────────
+function csvCell(v) {
+    const s = (v == null ? '' : String(v));
+    return /[",\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+}
+
+// ── 문제 dataID CSV 추출 ──────────────────────────────────
+function exportCsv() {
+    const header = ['dataID','filename','flagType','objectID','label','xmin','ymin','xmax','ymax','reason'];
+    const rows = [];
+    entries.forEach(e => {
+        if (!e.record) return;
+        if (e.unableToWork) {
+            rows.push([e.dataID, e.filename, '작업불가', '', '', '', '', '', '', '작업불가 처리' + (e.unableReason ? ' — ' + e.unableReason : '')]);
+        }
+        if (e.frameFlag) {
+            rows.push([e.dataID, e.filename, 'frame', '', '', '', '', '', '', e.frameReason || '']);
+        }
+        e.boxes.forEach(b => {
+            if (b.flagged) rows.push([e.dataID, e.filename, 'box', b.objectID, b.label, b.xmin, b.ymin, b.xmax, b.ymax, b.flagReason || '']);
+        });
+    });
+    if (!rows.length) { alert('문제/작업불가로 표시된 항목이 없습니다.'); return; }
+
+    const lines = [header, ...rows].map(r => r.map(csvCell).join(','));
+    const csv = '﻿' + lines.join('\r\n') + '\r\n';   // BOM → 엑셀 한글 정상
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = jsonFileName.replace(/\.[^.]+$/, '') + '_problems.csv';
+    a.click();
+    URL.revokeObjectURL(a.href);
+    const frameN = rows.filter(r => r[2] === 'frame').length;
+    const boxN = rows.filter(r => r[2] === 'box').length;
+    const unableN = rows.filter(r => r[2] === '작업불가').length;
+    alert(`CSV 추출 완료 — 작업불가 ${unableN}건, 프레임 ${frameN}건, 박스 ${boxN}건 (총 ${rows.length}행).`);
+}
+
+// ── 보기 모드 토글 ────────────────────────────────────────
+function toggleViewMode() {
+    viewMode = viewMode === 'all' ? 'single' : 'all';
+    const btn = document.getElementById('btnViewMode');
+    btn.textContent = viewMode === 'all' ? '전체 박스' : '선택 박스만';
+    btn.className = viewMode === 'all' ? 'btn btn-toggle active' : 'btn btn-toggle';
+    drawCanvas();
+}
+
+function toggleFitBoxes() {
+    fitToBoxes = !fitToBoxes;
+    const btn = document.getElementById('btnFitBoxes');
+    btn.textContent = (fitToBoxes ? '🔍 박스영역' : '🖼 전체 이미지');
+    btn.className = 'btn btn-toggle' + (fitToBoxes ? ' active' : '');
+    drawCanvas();
+}
+
+// ── 상태 업데이트 ─────────────────────────────────────────
+function updateStatusFromEntries() {
+    const total = entries.length;
+    const rec = entries.filter(e => e.hasRecord).length;
+    const dirty = entries.filter(e => e.dirty).length;
+    const flaggedFrames = entries.filter(e => isProblem(e)).length;
+    const flaggedBoxes = entries.reduce((s, e) => s + e.boxes.filter(b => b.flagged).length, 0);
+    const unable = entries.filter(e => e.unableToWork).length;
+    document.getElementById('bottomStatus').textContent =
+        `총 ${total}  |  레코드 ${rec}  |  수정 ${dirty}  |  문제프레임 ${flaggedFrames}  |  문제박스 ${flaggedBoxes}  |  작업불가 ${unable}`;
+}
+
+// ── 키보드 단축키 ─────────────────────────────────────────
+document.addEventListener('keydown', (e) => {
+    const isInput = e.target.tagName === 'INPUT';
+
+    if (e.ctrlKey && e.key === 's') { e.preventDefault(); saveJson(); return; }
+    if (e.ctrlKey && e.key === 'z') { e.preventDefault(); undo(); return; }
+
+    if (isInput && e.target.id === 'labelInput') {
+        if (e.key === 'Enter') { e.preventDefault(); applyLabel(); return; }
+        if (e.key === 'Escape') { e.preventDefault(); deselectBox(); return; }
+        if (e.key === 'Tab') { e.preventDefault(); e.shiftKey ? prevBox() : nextBox(); return; }
+        return;
+    }
+
+    if (isInput) return;
+
+    if (e.key === 'a' || e.key === 'ArrowLeft') {
+        e.preventDefault();
+        if (currentIndex > 0) selectEntry(currentIndex - 1);
+    } else if (e.key === 'd' || e.key === 'ArrowRight') {
+        e.preventDefault();
+        if (currentIndex < entries.length - 1) selectEntry(currentIndex + 1);
+    } else if (e.key === 'Tab') {
+        e.preventDefault();
+        e.shiftKey ? prevBox() : nextBox();
+    } else if (e.key === 'Escape') {
+        deselectBox();
+    } else if (e.key === 'v') {
+        toggleViewMode();
+    } else if (e.key === 'r') {
+        toggleFitBoxes();
+    } else if (e.key === 'q') {
+        if (selectedBox !== null) toggleBoxFlag();
+    } else if (e.key === 'w') {
+        toggleFrameFlag();
+    } else if (e.key === 'x') {
+        toggleUnable();
+    }
+});
+</script>
+</body>
+</html>
