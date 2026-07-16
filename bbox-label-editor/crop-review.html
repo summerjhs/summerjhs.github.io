@@ -5,74 +5,88 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Crop Review — 라벨별 크롭 검수</title>
 <style>
-* { margin: 0; padding: 0; box-sizing: border-box; }
-body { background: #1a1a2e; color: #e0e0e0; font-family: 'Segoe UI', sans-serif; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+:root{
+  /* 팔레트 */
+  --blue-1:#D2E0FB; --cream:#FEF9D9; --sage:#DEE5D4; --blue-2:#8EACCD; --white:#ffffff;
+  /* 파생 — 팔레트가 모두 밝아 대비 확보용 */
+  --ink:#121c2e;        /* 본문. 모든 면 위 최저 7.25:1 */
+  --muted:#3f5170;      /* 보조 텍스트 */
+  --border:#ccdaf2; --border-hi:#8EACCD; --bg:#f7faff; --hover:#eef4ff;
+  --canvas-bg:#8EACCD;  /* 캔버스 배경. 흰 이미지와 2.35:1 */
+  --deep-blue:#2f5c8f;  /* 주요 액션 (흰 글자 6.89:1) */
+  --deep-sage:#5a6b48;  /* 저장/정상 (흰 글자 5.78:1) */
+  --deep-terra:#a8523a; /* 위험/문제 (흰 글자 5.34:1) */
+  --deep-gold:#7a5c1f;  /* 경고/수정됨 (흰 글자 6.22:1) */
+}
 
-.top-bar { display: flex; align-items: center; gap: 10px; padding: 8px 12px; background: #16213e; border-bottom: 1px solid #333; flex-shrink: 0; }
-.top-bar label { font-size: 13px; color: #aaa; }
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font-family: 'Segoe UI', sans-serif; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+
+.top-bar { display: flex; align-items: center; gap: 10px; padding: 8px 12px; background: var(--white); border-bottom: 1px solid var(--border); flex-shrink: 0; }
+.top-bar label { font-size: 13px; color: var(--muted); }
 .top-bar input[type="file"] { display: none; }
-.btn { background: #0f3460; color: #e0e0e0; border: none; border-radius: 4px; padding: 6px 14px; font-size: 12px; cursor: pointer; white-space: nowrap; }
-.btn:hover { background: #1a5276; }
-.btn:disabled { background: #333; color: #666; cursor: default; }
-.btn-primary { background: #e94560; color: #fff; font-weight: bold; }
-.btn-primary:hover { background: #d63851; }
-.btn-save { background: #4ecdc4; color: #1a1a2e; font-weight: bold; }
-.btn-save:hover { background: #45b7aa; }
-.btn-csv { background: #f6c744; color: #1a1a2e; font-weight: bold; }
-.btn-csv:hover { background: #e0b430; }
-.status-text { font-size: 12px; color: #aaa; margin-left: auto; }
+.btn { background: var(--blue-1); color: var(--ink); border: none; border-radius: 4px; padding: 6px 14px; font-size: 12px; cursor: pointer; white-space: nowrap; }
+.btn:hover { background: var(--blue-2); }
+.btn:disabled { background: var(--border); color: var(--muted); cursor: default; }
+.btn-primary { background: var(--deep-blue); color: #fff; font-weight: bold; }
+.btn-primary:hover { background: var(--ink); color: #fff; }
+.btn-save { background: var(--sage); color: var(--ink); font-weight: bold; }
+.btn-save:hover { background: var(--deep-sage); color: #fff; }
+.btn-csv { background: var(--cream); color: var(--ink); font-weight: bold; }
+.btn-csv:hover { background: var(--deep-gold); color: #fff; }
+.status-text { font-size: 12px; color: var(--muted); margin-left: auto; }
 
 .main { display: flex; flex: 1; overflow: hidden; }
 
 /* 라벨 목록 */
-.sidebar { width: 210px; min-width: 160px; display: flex; flex-direction: column; border-right: 1px solid #333; background: #16213e; flex-shrink: 0; }
-.sidebar h3 { font-size: 11px; color: #888; padding: 8px 10px 4px; text-transform: uppercase; letter-spacing: 1px; }
+.sidebar { width: 210px; min-width: 160px; display: flex; flex-direction: column; border-right: 1px solid var(--border); background: var(--white); flex-shrink: 0; }
+.sidebar h3 { font-size: 11px; color: var(--muted); padding: 8px 10px 4px; text-transform: uppercase; letter-spacing: 1px; }
 .label-list { flex: 1; overflow-y: auto; }
-.label-item { display: flex; align-items: center; gap: 8px; padding: 7px 12px; font-size: 13px; cursor: pointer; border-bottom: 1px solid #1a1a2e; }
-.label-item:hover { background: #1a3a5c; }
-.label-item.active { background: #0f3460; }
+.label-item { display: flex; align-items: center; gap: 8px; padding: 7px 12px; font-size: 13px; cursor: pointer; border-bottom: 1px solid var(--border); }
+.label-item:hover { background: var(--hover); }
+.label-item.active { background: var(--blue-1); color: var(--ink); }
 .label-item .chip { width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; border-radius: 4px; font-weight: bold; font-family: Consolas, monospace; font-size: 14px; flex-shrink: 0; }
-.label-item .cnt { color: #aaa; font-size: 12px; margin-left: auto; }
-.label-item.problem-group .chip { background: #ff2d2d; color: #fff; }
+.label-item .cnt { color: var(--muted); font-size: 12px; margin-left: auto; }
+.label-item.problem-group .chip { background: var(--deep-terra); color: #fff; }
 
 /* 메인 */
 .content { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
-.edit-bar { display: flex; align-items: center; gap: 10px; padding: 8px 12px; background: #16213e; border-bottom: 1px solid #333; flex-shrink: 0; min-height: 46px; flex-wrap: wrap; }
-.edit-bar .info { font-size: 13px; color: #ccc; }
-.edit-bar input[type="text"].label-in { width: 46px; background: #1a1a2e; color: #fff; border: 1px solid #444; border-radius: 4px; padding: 5px; font-size: 16px; text-align: center; text-transform: uppercase; outline: none; }
-.edit-bar input[type="text"].label-in:focus { border-color: #e94560; }
-.edit-bar .hint { font-size: 11px; color: #777; margin-left: auto; }
+.edit-bar { display: flex; align-items: center; gap: 10px; padding: 8px 12px; background: var(--white); border-bottom: 1px solid var(--border); flex-shrink: 0; min-height: 46px; flex-wrap: wrap; }
+.edit-bar .info { font-size: 13px; color: var(--ink); }
+.edit-bar input[type="text"].label-in { width: 46px; background: var(--white); color: var(--ink); border: 1px solid var(--border); border-radius: 4px; padding: 5px; font-size: 16px; text-align: center; text-transform: uppercase; outline: none; }
+.edit-bar input[type="text"].label-in:focus { border-color: var(--deep-blue); }
+.edit-bar .hint { font-size: 11px; color: var(--muted); margin-left: auto; }
 
 .grid-wrap { flex: 1; overflow-y: auto; padding: 12px; }
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 10px; }
-.cell { position: relative; background: #0d1117; border: 2px solid #333; border-radius: 6px; overflow: hidden; cursor: pointer; }
-.cell canvas { display: block; width: 100%; height: 104px; background: #000; }
-.cell .cap { font-size: 9px; color: #999; text-align: center; padding: 2px 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.cell.selected { border-color: #4ecdc4; box-shadow: 0 0 0 2px #4ecdc4 inset; }
-.cell.problem { border-color: #ff2d2d; }
-.cell.unable { border-color: #ffb000; }
-.cell.unable::after { content: '🚫'; position: absolute; top: 2px; left: 2px; font-size: 15px; text-shadow: 0 0 3px #000; }
-.label-item.unable-group .chip { background: #ffb000; color: #1a1a2e; }
-.cell.edited { border-color: #f6c744; }
-.cell .flagbtn { position: absolute; top: 3px; right: 3px; width: 22px; height: 22px; border: none; border-radius: 4px; background: rgba(40,40,60,0.8); color: #ff8080; font-size: 13px; cursor: pointer; line-height: 22px; text-align: center; padding: 0; }
-.cell .flagbtn:hover { background: rgba(255,45,45,0.85); color: #fff; }
-.cell.problem .flagbtn { background: #ff2d2d; color: #fff; }
+.cell { position: relative; background: var(--hover); border: 2px solid var(--border); border-radius: 6px; overflow: hidden; cursor: pointer; }
+.cell canvas { display: block; width: 100%; height: 104px; background: var(--canvas-bg); }
+.cell .cap { font-size: 9px; color: var(--muted); text-align: center; padding: 2px 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cell.selected { border-color: var(--deep-sage); box-shadow: 0 0 0 2px var(--deep-sage) inset; }
+.cell.problem { border-color: var(--deep-terra); }
+.cell.unable { border-color: var(--deep-gold); }
+.cell.unable::after { content: '🚫'; position: absolute; top: 2px; left: 2px; font-size: 15px; text-shadow: 0 0 3px var(--white); }
+.label-item.unable-group .chip { background: var(--deep-gold); color: #fff; }
+.cell.edited { border-color: var(--deep-gold); }
+.cell .flagbtn { position: absolute; top: 3px; right: 3px; width: 22px; height: 22px; border: none; border-radius: 4px; background: var(--white); color: var(--deep-terra); font-size: 13px; cursor: pointer; line-height: 22px; text-align: center; padding: 0; }
+.cell .flagbtn:hover { background: var(--deep-terra); color: #fff; }
+.cell.problem .flagbtn { background: var(--deep-terra); color: #fff; }
 
-.placeholder { grid-column: 1/-1; color: #666; text-align: center; padding: 40px; font-size: 14px; }
+.placeholder { grid-column: 1/-1; color: var(--muted); text-align: center; padding: 40px; font-size: 14px; }
 
-.bottom-bar { display: flex; align-items: center; gap: 10px; padding: 6px 12px; background: #16213e; border-top: 1px solid #333; flex-shrink: 0; }
-.bottom-bar .status { flex: 1; font-size: 12px; color: #aaa; }
+.bottom-bar { display: flex; align-items: center; gap: 10px; padding: 6px 12px; background: var(--white); border-top: 1px solid var(--border); flex-shrink: 0; }
+.bottom-bar .status { flex: 1; font-size: 12px; color: var(--muted); }
 
 ::-webkit-scrollbar { width: 8px; }
-::-webkit-scrollbar-track { background: #1a1a2e; }
-::-webkit-scrollbar-thumb { background: #444; border-radius: 4px; }
+::-webkit-scrollbar-track { background: var(--hover); }
+::-webkit-scrollbar-thumb { background: var(--blue-2); border-radius: 4px; }
 
 /* 원본 이미지 모달 */
-.overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.82); z-index: 50; align-items: center; justify-content: center; padding: 20px; }
-.ov-box { background: #16213e; border: 1px solid #333; border-radius: 10px; width: 96vw; height: 92vh; display: flex; flex-direction: column; overflow: hidden; }
-.ov-head { display: flex; align-items: center; gap: 12px; padding: 8px 14px; border-bottom: 1px solid #333; flex-shrink: 0; }
-.ov-head #ovCaption { font-size: 13px; color: #ccc; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.ov-canvas-wrap { flex: 1; position: relative; overflow: hidden; background: #000; }
+.overlay { display: none; position: fixed; inset: 0; background: rgba(18,28,46,0.55); z-index: 50; align-items: center; justify-content: center; padding: 20px; }
+.ov-box { background: var(--white); border: 1px solid var(--border); border-radius: 10px; width: 96vw; height: 92vh; display: flex; flex-direction: column; overflow: hidden; }
+.ov-head { display: flex; align-items: center; gap: 12px; padding: 8px 14px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+.ov-head #ovCaption { font-size: 13px; color: var(--ink); flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ov-canvas-wrap { flex: 1; position: relative; overflow: hidden; background: var(--canvas-bg); }
 .ov-canvas-wrap canvas { display: block; }
 </style>
 </head>
@@ -95,7 +109,7 @@ body { background: #1a1a2e; color: #e0e0e0; font-family: 'Segoe UI', sans-serif;
     <div class="content">
         <div class="edit-bar">
             <span class="info" id="cropInfo">라벨 그룹을 선택하세요</span>
-            <label style="font-size:12px;color:#aaa;">라벨 수정:</label>
+            <label style="font-size:12px;color:var(--muted);">라벨 수정:</label>
             <input type="text" class="label-in" id="labelInput" maxlength="1" disabled>
             <button class="btn btn-primary" id="btnApply" disabled onclick="applyLabel()">적용</button>
             <button class="btn" id="btnFlag" disabled onclick="toggleProblem()">&#9873; 문제 표시</button>
@@ -413,8 +427,8 @@ async function drawCrop(cell) {
     const cv = cell.querySelector('canvas');
     const ctx = cv.getContext('2d');
     if (!entry.imageFile) {
-        ctx.fillStyle = '#222'; ctx.fillRect(0, 0, cv.width, cv.height);
-        ctx.fillStyle = '#888'; ctx.font = '11px sans-serif'; ctx.textAlign = 'center';
+        ctx.fillStyle = '#eef4ff'; ctx.fillRect(0, 0, cv.width, cv.height);   /* 빈 상태 — 라이트 면 */
+        ctx.fillStyle = '#3f5170'; ctx.font = '11px sans-serif'; ctx.textAlign = 'center';
         ctx.fillText('이미지 없음', cv.width / 2, cv.height / 2);
         cell._drawn = true; return;
     }
