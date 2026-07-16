@@ -1,0 +1,833 @@
+<!DOCTYPE html>
+<!-- 도장검사지 결함코드 검수 툴 - polyline/box 시각화, 번호(결함코드) 그룹 검수 -->
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>도장검사지 결함코드 검수 툴</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Segoe UI',sans-serif;background:#1e1e1e;color:#ccc;height:100vh;display:flex;flex-direction:column;overflow:hidden;user-select:none}
+
+header{background:#2d2d2d;padding:6px 14px;display:flex;align-items:center;gap:10px;border-bottom:1px solid #444;flex-shrink:0}
+header h1{font-size:15px;color:#fff;white-space:nowrap}
+header button{background:#4a6a8a;color:#fff;border:none;padding:4px 12px;border-radius:4px;cursor:pointer;font-size:13px}
+header button:hover{background:#5a7a9a}
+header button.ghost{background:#3a3a3a}
+header button.ghost:hover{background:#4a4a4a}
+header .counter{color:#aaa;font-size:13px;white-space:nowrap}
+.spacer{flex:1}
+
+.main{flex:1;display:flex;min-height:0}
+aside{background:#252525;border-right:1px solid #3a3a3a;width:230px;flex-shrink:0;overflow-y:auto;padding:10px}
+aside.right{border-right:none;border-left:1px solid #3a3a3a;width:290px}
+.center{flex:1;position:relative;background:#141414;min-width:0}
+canvas{display:block;width:100%;height:100%;cursor:crosshair}
+
+.sec{margin-bottom:14px}
+.sec h3{font-size:11px;color:#7a8a9a;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;font-weight:600}
+
+.imglist{display:flex;flex-direction:column;gap:2px;max-height:190px;overflow-y:auto}
+.imgitem{padding:5px 7px;border-radius:4px;font-size:12px;cursor:pointer;display:flex;justify-content:space-between;gap:6px;color:#bbb}
+.imgitem:hover{background:#333}
+.imgitem.active{background:#4a6a8a;color:#fff}
+.imgitem .n{color:#888;font-size:11px}
+.imgitem.active .n{color:#dbe}
+.imgitem.done .n::after{content:' ✓';color:#5cb85c}
+
+label.chk{display:flex;align-items:center;gap:7px;font-size:12px;padding:3px 2px;cursor:pointer;color:#bbb}
+label.chk:hover{color:#fff}
+.swatch{width:11px;height:11px;border-radius:2px;flex-shrink:0}
+.cnt{margin-left:auto;color:#777;font-size:11px}
+
+.nums{display:flex;flex-wrap:wrap;gap:4px}
+.numchip{background:#333;color:#bbb;border:1px solid #444;border-radius:4px;padding:3px 8px;font-size:12px;cursor:pointer;min-width:28px;text-align:center}
+.numchip:hover{border-color:#4a6a8a;color:#fff}
+.numchip.active{background:#4a6a8a;border-color:#5a7a9a;color:#fff;font-weight:600}
+
+.objlist{display:flex;flex-direction:column;gap:2px;max-height:260px;overflow-y:auto}
+.objitem{padding:4px 7px;border-radius:4px;font-size:12px;cursor:pointer;display:flex;align-items:center;gap:6px;color:#bbb;border-left:3px solid transparent}
+.objitem:hover{background:#333}
+.objitem.active{background:#3c5570;color:#fff}
+.objitem.dim{opacity:.35}
+.objitem .t{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.badge{font-size:10px;padding:1px 5px;border-radius:8px;flex-shrink:0}
+.badge.ok{background:#2d5a2d;color:#9d9}
+.badge.ng{background:#6a2a2a;color:#f99}
+
+.detail{font-size:12px;line-height:1.7}
+.detail .row{display:flex;gap:8px}
+.detail .k{color:#7a8a9a;width:72px;flex-shrink:0}
+.detail .v{color:#ddd;word-break:break-all}
+.empty{color:#666;font-size:12px;padding:8px 0;line-height:1.6}
+
+.stbtns{display:flex;gap:5px;margin:8px 0}
+.stbtns button{flex:1;padding:6px;border:1px solid #444;background:#333;color:#bbb;border-radius:4px;cursor:pointer;font-size:12px}
+.stbtns button:hover{border-color:#666;color:#fff}
+.stbtns button.on-ok{background:#2d5a2d;border-color:#3d7a3d;color:#cfc}
+.stbtns button.on-ng{background:#6a2a2a;border-color:#8a3a3a;color:#fcc}
+.stbtns button.on-un{background:#4a4a4a;border-color:#666;color:#fff}
+textarea{width:100%;background:#1a1a1a;border:1px solid #444;color:#ddd;border-radius:4px;padding:6px;font-size:12px;font-family:inherit;resize:vertical;min-height:56px}
+textarea:focus{outline:none;border-color:#4a6a8a}
+
+.bar{height:5px;background:#333;border-radius:3px;overflow:hidden;margin-top:5px}
+.bar i{display:block;height:100%;background:#4a6a8a;width:0}
+
+.drop{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:14px;color:#666;text-align:center;padding:24px;pointer-events:none}
+.drop.hide{display:none}
+.drop .big{font-size:15px;color:#999}
+.drop .sm{font-size:12px;line-height:1.8}
+.drop kbd{background:#333;border:1px solid #555;border-radius:3px;padding:1px 5px;font-size:11px;color:#bbb}
+.center.dragover{outline:2px dashed #4a6a8a;outline-offset:-8px}
+.hint{position:absolute;left:10px;bottom:8px;font-size:11px;color:#666;pointer-events:none;background:rgba(20,20,20,.75);padding:3px 8px;border-radius:4px}
+.warn{color:#d88;font-size:11px;margin-top:5px;line-height:1.5}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>도장검사지 결함코드 검수 툴</h1>
+  <button id="btnFolder">이미지 폴더</button>
+  <button id="btnJson">JSON 파일</button>
+  <span class="counter" id="counter">데이터 없음</span>
+  <div class="spacer"></div>
+  <span class="counter" id="progress"></span>
+  <button class="ghost" id="btnCsv">CSV 내보내기</button>
+  <button class="ghost" id="btnJsonOut">교정 JSON</button>
+</header>
+
+<div class="main">
+  <aside class="left">
+    <div class="sec">
+      <h3>이미지</h3>
+      <div class="imglist" id="imglist"><div class="empty">폴더를 불러오세요</div></div>
+    </div>
+    <div class="sec">
+      <h3>보기 옵션</h3>
+      <label class="chk"><input type="checkbox" id="optLabels" checked> 라벨 표시</label>
+      <label class="chk"><input type="checkbox" id="optFull"> 전체 이미지 보기</label>
+      <label class="chk"><input type="checkbox" id="optIsolate"> 격리 모드(선택만)</label>
+    </div>
+    <div class="sec">
+      <h3>타입 필터</h3>
+      <div id="typefilter"><div class="empty">-</div></div>
+    </div>
+    <div class="sec">
+      <h3>번호(결함코드)</h3>
+      <div class="nums" id="nums"><div class="empty">-</div></div>
+      <div class="empty" id="numHint" style="padding-top:6px">번호를 누르면 X자·지시선·원기호·텍스트를 함께 봅니다</div>
+    </div>
+  </aside>
+
+  <div class="center" id="center">
+    <canvas id="cv"></canvas>
+    <div class="drop" id="drop">
+      <div class="big">이미지 폴더와 JSON 파일을 불러오세요</div>
+      <div class="sm">
+        상단 <b>이미지 폴더</b> / <b>JSON 파일</b> 버튼을 쓰거나<br>
+        이 영역에 폴더·파일을 <b>드래그앤드롭</b> 하세요.<br>
+        <span style="color:#777">브라우저 보안상 경로 문자열로는 읽을 수 없어<br>폴더 선택기/드롭 방식을 사용합니다. 파일은 서버로 전송되지 않습니다.</span>
+      </div>
+    </div>
+    <div class="hint" id="hint"></div>
+  </div>
+
+  <aside class="right">
+    <div class="sec">
+      <h3>객체 목록</h3>
+      <div class="objlist" id="objlist"><div class="empty">-</div></div>
+    </div>
+    <div class="sec">
+      <h3>선택 객체</h3>
+      <div id="detail"><div class="empty">캔버스에서 객체를 클릭하거나<br>목록에서 선택하세요</div></div>
+    </div>
+    <div class="sec" id="reviewSec" style="display:none">
+      <h3>검수</h3>
+      <div class="stbtns">
+        <button id="stOk">정상 (O)</button>
+        <button id="stNg">오류 (X)</button>
+        <button id="stUn">미검수 (U)</button>
+      </div>
+      <textarea id="memo" placeholder="메모 (자동 저장)"></textarea>
+    </div>
+  </aside>
+</div>
+
+<script>
+/* ===== 상태 ===== */
+const TYPE_ORDER = ['X자','지시선','원 기호','텍스트','확인 검사 도장'];
+const LS_KEY = 'pdi_reviews_v1';
+let imageFiles = {};      // 파일명 -> File
+let records = [];         // JSONL 레코드
+let images = [];          // { name, rec, akey, objs[], crop, dataID, projectID, file }
+let cur = -1;
+let curImg = null;        // Image 객체
+let sel = null;           // 선택 객체
+let selNum = null;        // 선택 번호
+let hidden = new Set();   // 숨긴 타입
+let reviews = loadReviews();
+let view = { scale: 1, ox: 0, oy: 0 };
+let labelBoxes = [];      // 렌더 후 라벨 히트박스
+
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+
+/* ===== 유틸 ===== */
+function loadReviews() {
+  try { return JSON.parse(localStorage.getItem(LS_KEY)) || {}; } catch { return {}; }
+}
+function saveReviews() {
+  try { localStorage.setItem(LS_KEY, JSON.stringify(reviews)); } catch {}
+}
+function rkey(img, o) { return `${img.projectID}_${img.dataID}_${o.id}`; }
+function getReview(img, o) { return reviews[rkey(img, o)] || { status: '', memo: '' }; }
+function setReview(img, o, patch) {
+  const k = rkey(img, o);
+  reviews[k] = Object.assign({ status: '', memo: '' }, reviews[k], patch);
+  if (!reviews[k].status && !reviews[k].memo) delete reviews[k];
+  saveReviews();
+}
+
+/* ===== 파싱 (JSONL) ===== */
+function parseRecords(text) {
+  const out = [];
+  for (const line of text.split('\n')) {
+    const s = line.trim();
+    if (!s) continue;
+    try { out.push(JSON.parse(s)); } catch (e) { console.warn('파싱 실패 라인', e); }
+  }
+  // 단일 JSON 배열도 허용
+  if (out.length === 1 && Array.isArray(out[0])) return out[0];
+  return out;
+}
+
+function annKey(rec) {
+  for (const k in rec) {
+    const v = rec[k];
+    if (v && typeof v === 'object' && !Array.isArray(v) && 'data' in v && 'sourceValue' in v) return k;
+  }
+  return null;
+}
+
+function labelText(o) {
+  const parts = [o.label || o.value || ''];
+  if (o.numbers.length) parts.push('#' + o.numbers.join('·'));
+  if (o.addNumbers.length) parts.push('+' + o.addNumbers.join('·'));
+  if (o.text) parts.push('"' + o.text + '"');
+  if (o.checks.length) parts.push('[' + o.checks.join(',') + ']');
+  return parts.filter(Boolean).join(' ');
+}
+
+function buildObjects(node) {
+  const objs = [];
+  for (const d of node.data || []) {
+    const v = d.value || {};
+    const ex = v.extra || {};
+    const o = {
+      id: d.objectID,
+      ann: v.annotation,
+      label: ex.label || '',
+      value: ex.value || '',
+      color: ex.color || '#00ff00',
+      numbers: (v.name_M94EBP || []).map(x => x.label).filter(Boolean),
+      addNumbers: (v.name_Z4Q2JS || []).map(x => x.label).filter(Boolean),
+      text: (v.text || '').trim(),
+      checks: (v.name_QR0I1Z || []).map(x => x.label).filter(Boolean),
+      points: null, rect: null, raw: d,
+    };
+    if (v.annotation === 'POLYLINE') {
+      o.points = (v.points || []).map(p => ({ x: p.x, y: p.y }));
+      if (!o.points.length) continue;
+      o.anchor = o.points[0];
+      const xs = o.points.map(p => p.x), ys = o.points.map(p => p.y);
+      o.bbox = { x0: Math.min(...xs), y0: Math.min(...ys), x1: Math.max(...xs), y1: Math.max(...ys) };
+    } else if (v.annotation === 'BOX') {
+      const c = v.coords || {};
+      if (!c.tl || !c.tr || !c.br || !c.bl) continue;
+      o.rect = [c.tl, c.tr, c.br, c.bl].map(p => ({ x: p.x, y: p.y }));
+      o.anchor = { x: c.tl.x, y: c.tl.y };
+      const xs = o.rect.map(p => p.x), ys = o.rect.map(p => p.y);
+      o.bbox = { x0: Math.min(...xs), y0: Math.min(...ys), x1: Math.max(...xs), y1: Math.max(...ys) };
+    } else continue;
+    o.ltext = labelText(o);
+    objs.push(o);
+  }
+  return objs;
+}
+
+/* 어노테이션 전체를 감싸는 크롭 영역 (라벨 없는 여백 제거) */
+function cropBox(objs, iw, ih) {
+  if (!objs.length) return { x0: 0, y0: 0, x1: iw, y1: ih };
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const o of objs) {
+    x0 = Math.min(x0, o.bbox.x0); y0 = Math.min(y0, o.bbox.y0);
+    x1 = Math.max(x1, o.bbox.x1); y1 = Math.max(y1, o.bbox.y1);
+  }
+  const mx = Math.max(40, (x1 - x0) * 0.06), my = Math.max(40, (y1 - y0) * 0.06);
+  return {
+    x0: Math.max(0, x0 - mx), y0: Math.max(0, y0 - my),
+    x1: Math.min(iw, x1 + mx), y1: Math.min(ih, y1 + my),
+  };
+}
+
+/* ===== 로딩 ===== */
+function rebuild() {
+  images = [];
+  for (const rec of records) {
+    const k = annKey(rec);
+    if (!k) continue;
+    const node = rec[k];
+    const name = node.sourceValue;
+    const file = imageFiles[name];
+    images.push({
+      name, rec, akey: k, file: file || null,
+      objs: buildObjects(node),
+      dataID: rec.dataID, projectID: rec.projectID,
+      crop: null,
+    });
+  }
+  const matched = images.filter(i => i.file).length;
+  document.getElementById('counter').textContent =
+    records.length ? `이미지 ${matched}/${images.length} 매칭` : '데이터 없음';
+  renderImageList();
+  updateProgress();
+  if (matched && cur < 0) {
+    const i = images.findIndex(x => x.file);
+    if (i >= 0) selectImage(i);
+  } else if (cur >= 0) selectImage(cur);
+}
+
+async function selectImage(idx) {
+  cur = idx;
+  sel = null; selNum = null;
+  const img = images[idx];
+  renderImageList();
+  if (!img || !img.file) { curImg = null; render(); return; }
+  const url = URL.createObjectURL(img.file);
+  curImg = await new Promise((res, rej) => {
+    const im = new Image();
+    im.onload = () => res(im);
+    im.onerror = rej;
+    im.src = url;
+  });
+  img.crop = cropBox(img.objs, curImg.width, curImg.height);
+  document.getElementById('drop').classList.add('hide');
+  fitView();
+  renderSidebars();
+  render();
+}
+
+function pickFolder() {
+  const input = document.createElement('input');
+  input.type = 'file'; input.webkitdirectory = true; input.multiple = true;
+  input.onchange = () => { if (input.files.length) ingest(input.files); };
+  input.click();
+}
+function pickJson() {
+  const input = document.createElement('input');
+  input.type = 'file'; input.accept = '.json,.jsonl';
+  input.onchange = () => { if (input.files.length) ingest(input.files); };
+  input.click();
+}
+
+async function ingest(fileList) {
+  let jsonText = null;
+  for (const f of fileList) {
+    const lower = f.name.toLowerCase();
+    if (/\.(jpg|jpeg|png|bmp|webp)$/.test(lower)) imageFiles[f.name] = f;
+    else if (/\.(json|jsonl)$/.test(lower)) jsonText = await f.text();
+  }
+  if (jsonText) records = parseRecords(jsonText);
+  rebuild();
+}
+
+/* ===== 좌표 변환 ===== */
+function toScreen(p) { return { x: p.x * view.scale + view.ox, y: p.y * view.scale + view.oy }; }
+function toImage(x, y) { return { x: (x - view.ox) / view.scale, y: (y - view.oy) / view.scale }; }
+
+/* 캔버스 백버퍼 크기를 CSS 크기에 맞춤 (fitView/render 모두 이 값에 의존) */
+function resizeCanvas() {
+  const dpr = window.devicePixelRatio || 1;
+  const rect = cv.getBoundingClientRect();
+  const w = Math.max(1, Math.round(rect.width * dpr));
+  const h = Math.max(1, Math.round(rect.height * dpr));
+  if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
+}
+
+function fitView() {
+  if (!curImg) return;
+  resizeCanvas();
+  const img = images[cur];
+  const full = document.getElementById('optFull').checked;
+  const b = full ? { x0: 0, y0: 0, x1: curImg.width, y1: curImg.height } : img.crop;
+  const w = b.x1 - b.x0, h = b.y1 - b.y0;
+  const s = Math.min(cv.width / w, cv.height / h) * 0.98;
+  view.scale = s;
+  view.ox = (cv.width - w * s) / 2 - b.x0 * s;
+  view.oy = (cv.height - h * s) / 2 - b.y0 * s;
+}
+
+function zoomTo(bbox) {
+  const w = bbox.x1 - bbox.x0, h = bbox.y1 - bbox.y0;
+  const pad = Math.max(w, h) * 1.6 + 60;
+  const cx = (bbox.x0 + bbox.x1) / 2, cy = (bbox.y0 + bbox.y1) / 2;
+  const s = Math.min(cv.width / pad, cv.height / pad);
+  view.scale = s;
+  view.ox = cv.width / 2 - cx * s;
+  view.oy = cv.height / 2 - cy * s;
+}
+
+/* ===== 표시 여부 ===== */
+function inNumGroup(o, n) { return o.numbers.includes(n); }
+function isActive(o) {
+  if (sel) return o === sel;
+  if (selNum) return inNumGroup(o, selNum);
+  return true;
+}
+function isVisible(o) {
+  if (hidden.has(o.label)) return false;
+  if (document.getElementById('optIsolate').checked && (sel || selNum)) return isActive(o);
+  return true;
+}
+
+/* ===== 라벨 겹침 회피 (visualize.py 이식) ===== */
+function overlaps(a, b) { return !(a[2] <= b[0] || b[2] <= a[0] || a[3] <= b[1] || b[3] <= a[1]); }
+
+function placeLabel(ax, ay, w, h, placed, W, H) {
+  const step = Math.max(h + 2, 14);
+  const cands = [[0, -h - 4]];
+  for (let ring = 1; ring < 40; ring++) {
+    const dy = ring * step;
+    cands.push(
+      [0, -h - 4 - dy], [0, 4 + dy],
+      [ring * w * 0.5, -h - 4], [-ring * w * 0.5, -h - 4],
+      [ring * w * 0.5, 4], [-ring * w * 0.5, 4],
+      [ring * w * 0.6, -h - 4 - dy / 2], [-ring * w * 0.6, -h - 4 - dy / 2],
+    );
+  }
+  for (const [dx, dy] of cands) {
+    const x0 = Math.min(Math.max(0, ax + dx), W - w);
+    const y0 = Math.min(Math.max(0, ay + dy), H - h);
+    const r = [x0, y0, x0 + w, y0 + h];
+    if (!placed.some(p => overlaps(r, p))) return [x0, y0];
+  }
+  return [Math.min(Math.max(0, ax), W - w), Math.min(Math.max(0, ay - h - 4), H - h)];
+}
+
+function textColor(hex) {
+  const h = hex.replace('#', '');
+  const r = parseInt(h.slice(0, 2), 16), g = parseInt(h.slice(2, 4), 16), b = parseInt(h.slice(4, 6), 16);
+  return (0.299 * r + 0.587 * g + 0.114 * b) > 140 ? '#000' : '#fff';
+}
+
+/* ===== 렌더 ===== */
+function render() {
+  resizeCanvas();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.clearRect(0, 0, cv.width, cv.height);
+  ctx.fillStyle = '#141414';
+  ctx.fillRect(0, 0, cv.width, cv.height);
+  labelBoxes = [];
+  if (!curImg) return;
+
+  const img = images[cur];
+  // 이미지
+  ctx.imageSmoothingEnabled = view.scale < 1;
+  ctx.drawImage(curImg, view.ox, view.oy, curImg.width * view.scale, curImg.height * view.scale);
+
+  const dimming = !!(sel || selNum);
+  const vis = img.objs.filter(isVisible);
+
+  // 도형 (화면기준 1px)
+  ctx.lineWidth = 1;
+  ctx.lineJoin = 'round';
+  for (const o of vis) {
+    const active = isActive(o);
+    ctx.globalAlpha = dimming && !active ? 0.18 : 1;
+    ctx.strokeStyle = o.color;
+    ctx.beginPath();
+    if (o.ann === 'POLYLINE') {
+      o.points.forEach((p, i) => {
+        const s = toScreen(p);
+        i ? ctx.lineTo(s.x + .5, s.y + .5) : ctx.moveTo(s.x + .5, s.y + .5);
+      });
+    } else {
+      o.rect.forEach((p, i) => {
+        const s = toScreen(p);
+        i ? ctx.lineTo(s.x + .5, s.y + .5) : ctx.moveTo(s.x + .5, s.y + .5);
+      });
+      ctx.closePath();
+    }
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+
+  // 선택/그룹 강조: 점선 박스 (선 자체는 1px 유지)
+  const S = window.devicePixelRatio || 1;
+  const hi = vis.filter(o => dimming && isActive(o));
+  ctx.setLineDash([4 * S, 3 * S]);
+  for (const o of hi) {
+    const a = toScreen({ x: o.bbox.x0, y: o.bbox.y0 }), b = toScreen({ x: o.bbox.x1, y: o.bbox.y1 });
+    const m = 3.5 * S;
+    ctx.strokeStyle = o === sel ? '#fff' : '#7ab8ff';
+    ctx.strokeRect(a.x - m, a.y - m, (b.x - a.x) + 2 * m, (b.y - a.y) + 2 * m);
+  }
+  ctx.setLineDash([]);
+
+  // 라벨
+  if (document.getElementById('optLabels').checked) {
+    // 캔버스 백버퍼는 dpr 배율이므로 폰트/여백도 dpr로 스케일해야 화면상 크기가 유지됨
+    const fs = Math.round(11 * S);
+    ctx.font = `${fs}px 'Segoe UI',sans-serif`;
+    ctx.textBaseline = 'top';
+    const pad = Math.round(2 * S);
+    const items = vis.filter(o => o.ltext).map(o => {
+      const a = toScreen(o.anchor);
+      return { o, ax: a.x, ay: a.y, w: ctx.measureText(o.ltext).width + pad * 2, h: fs + pad * 2 };
+    }).sort((A, B) => A.ay - B.ay);
+
+    const placed = [];
+    for (const it of items) {
+      const [x0, y0] = placeLabel(it.ax, it.ay, it.w, it.h, placed, cv.width, cv.height);
+      placed.push([x0, y0, x0 + it.w, y0 + it.h]);
+      it.x0 = x0; it.y0 = y0;
+    }
+    for (const it of items) {
+      const active = isActive(it.o);
+      ctx.globalAlpha = dimming && !active ? 0.18 : 1;
+      const cx = it.x0 + it.w / 2, cy = it.y0 + it.h / 2;
+      if (Math.abs(cx - it.ax) > it.w || Math.abs(cy - it.ay) > it.h) {
+        ctx.strokeStyle = it.o.color; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(it.ax + .5, it.ay + .5); ctx.lineTo(cx + .5, cy + .5); ctx.stroke();
+      }
+      ctx.fillStyle = it.o.color;
+      ctx.fillRect(it.x0, it.y0, it.w, it.h);
+      const rv = getReview(img, it.o);
+      if (rv.status) {
+        ctx.fillStyle = rv.status === 'OK' ? '#5cb85c' : '#e05a5a';
+        ctx.fillRect(it.x0, it.y0, Math.max(2, 3 * S), it.h);
+      }
+      ctx.fillStyle = textColor(it.o.color);
+      ctx.fillText(it.o.ltext, it.x0 + pad, it.y0 + pad);
+      labelBoxes.push({ o: it.o, r: [it.x0, it.y0, it.x0 + it.w, it.y0 + it.h] });
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  const z = Math.round(view.scale * 100);
+  document.getElementById('hint').textContent =
+    `${img.name} · ${curImg.width}×${curImg.height} · 객체 ${img.objs.length} · ${z}%` +
+    (selNum ? ` · 번호 #${selNum} 그룹` : '') +
+    ' · 휠=줌, 드래그=이동, 클릭=선택, F=맞춤, A=전체보기';
+}
+
+/* ===== 히트테스트 ===== */
+function distToSeg(p, a, b) {
+  const dx = b.x - a.x, dy = b.y - a.y;
+  const L = dx * dx + dy * dy;
+  if (!L) return Math.hypot(p.x - a.x, p.y - a.y);
+  let t = ((p.x - a.x) * dx + (p.y - a.y) * dy) / L;
+  t = Math.max(0, Math.min(1, t));
+  return Math.hypot(p.x - (a.x + t * dx), p.y - (a.y + t * dy));
+}
+
+function hitTest(mx, my) {
+  const img = images[cur];
+  if (!img) return null;
+  // 1) 라벨 박스 우선
+  for (let i = labelBoxes.length - 1; i >= 0; i--) {
+    const { o, r } = labelBoxes[i];
+    if (mx >= r[0] && mx <= r[2] && my >= r[1] && my <= r[3]) return o;
+  }
+  // 2) 도형
+  const p = toImage(mx, my);
+  const tol = 6 / view.scale;
+  let best = null, bestD = Infinity;
+  for (const o of img.objs) {
+    if (!isVisible(o)) continue;
+    if (o.ann === 'POLYLINE') {
+      for (let i = 0; i < o.points.length - 1; i++) {
+        const d = distToSeg(p, o.points[i], o.points[i + 1]);
+        if (d < tol && d < bestD) { bestD = d; best = o; }
+      }
+    } else {
+      const b = o.bbox;
+      const inside = p.x >= b.x0 - tol && p.x <= b.x1 + tol && p.y >= b.y0 - tol && p.y <= b.y1 + tol;
+      if (inside) {
+        // 작은 박스 우선 선택
+        const area = (b.x1 - b.x0) * (b.y1 - b.y0);
+        if (area < bestD) { bestD = area; best = o; }
+      }
+    }
+  }
+  return best;
+}
+
+/* ===== 사이드바 ===== */
+function renderImageList() {
+  const el = document.getElementById('imglist');
+  if (!images.length) { el.innerHTML = '<div class="empty">폴더를 불러오세요</div>'; return; }
+  el.innerHTML = '';
+  images.forEach((img, i) => {
+    const d = document.createElement('div');
+    d.className = 'imgitem' + (i === cur ? ' active' : '');
+    const done = img.objs.length && img.objs.every(o => getReview(img, o).status);
+    if (done) d.classList.add('done');
+    const n = img.objs.filter(o => getReview(img, o).status).length;
+    d.innerHTML = `<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${img.file ? '' : '⚠ '}${img.name}</span>` +
+                  `<span class="n">${n}/${img.objs.length}</span>`;
+    if (!img.file) d.title = '매칭되는 이미지 파일 없음';
+    d.onclick = () => img.file ? selectImage(i) : alert(`이미지 파일이 없습니다: ${img.name}`);
+    el.appendChild(d);
+  });
+}
+
+function renderSidebars() {
+  const img = images[cur];
+  // 타입 필터
+  const tf = document.getElementById('typefilter');
+  const counts = {};
+  (img ? img.objs : []).forEach(o => counts[o.label] = (counts[o.label] || 0) + 1);
+  const types = Object.keys(counts).sort((a, b) => TYPE_ORDER.indexOf(a) - TYPE_ORDER.indexOf(b));
+  tf.innerHTML = types.length ? '' : '<div class="empty">-</div>';
+  types.forEach(t => {
+    const color = (img.objs.find(o => o.label === t) || {}).color || '#888';
+    const l = document.createElement('label');
+    l.className = 'chk';
+    l.innerHTML = `<input type="checkbox" ${hidden.has(t) ? '' : 'checked'}>
+      <span class="swatch" style="background:${color}"></span>${t}<span class="cnt">${counts[t]}</span>`;
+    l.querySelector('input').onchange = e => {
+      e.target.checked ? hidden.delete(t) : hidden.add(t);
+      renderObjList(); render();
+    };
+    tf.appendChild(l);
+  });
+
+  // 번호 칩
+  const nd = document.getElementById('nums');
+  const nums = [...new Set((img ? img.objs : []).flatMap(o => o.numbers))]
+    .sort((a, b) => (parseInt(a) || 0) - (parseInt(b) || 0));
+  nd.innerHTML = nums.length ? '' : '<div class="empty">-</div>';
+  nums.forEach(n => {
+    const c = document.createElement('div');
+    c.className = 'numchip' + (selNum === n ? ' active' : '');
+    c.textContent = n;
+    c.title = img.objs.filter(o => inNumGroup(o, n)).map(o => o.ltext).join('\n');
+    c.onclick = () => { selNum = selNum === n ? null : n; sel = null; renderSidebars(); render(); };
+    nd.appendChild(c);
+  });
+
+  renderObjList();
+  renderDetail();
+}
+
+function renderObjList() {
+  const el = document.getElementById('objlist');
+  const img = images[cur];
+  if (!img || !img.objs.length) { el.innerHTML = '<div class="empty">-</div>'; return; }
+  el.innerHTML = '';
+  const list = [...img.objs].sort((a, b) => {
+    const na = parseInt(a.numbers[0]) || 0, nb = parseInt(b.numbers[0]) || 0;
+    return na - nb || TYPE_ORDER.indexOf(a.label) - TYPE_ORDER.indexOf(b.label);
+  });
+  for (const o of list) {
+    const d = document.createElement('div');
+    const active = o === sel;
+    const inGrp = selNum && inNumGroup(o, selNum);
+    d.className = 'objitem' + (active ? ' active' : '') +
+      ((selNum && !inGrp) || hidden.has(o.label) ? ' dim' : '');
+    d.style.borderLeftColor = o.color;
+    const rv = getReview(img, o);
+    const badge = rv.status === 'OK' ? '<span class="badge ok">정상</span>'
+      : rv.status === 'NG' ? '<span class="badge ng">오류</span>' : '';
+    d.innerHTML = `<span class="t">${o.ltext}</span>${badge}`;
+    d.title = o.id;
+    d.onclick = () => { sel = o; selNum = null; zoomTo(o.bbox); renderSidebars(); render(); };
+    el.appendChild(d);
+  }
+}
+
+function renderDetail() {
+  const el = document.getElementById('detail');
+  const rs = document.getElementById('reviewSec');
+  const img = images[cur];
+  if (!sel) {
+    el.innerHTML = selNum
+      ? `<div class="empty">번호 <b style="color:#7ab8ff">#${selNum}</b> 그룹 ${img.objs.filter(o => inNumGroup(o, selNum)).length}개 표시 중.<br>객체를 클릭하면 상세가 나옵니다.</div>`
+      : '<div class="empty">캔버스에서 객체를 클릭하거나<br>목록에서 선택하세요</div>';
+    rs.style.display = 'none';
+    return;
+  }
+  const o = sel;
+  const rv = getReview(img, o);
+  const row = (k, v) => v ? `<div class="row"><span class="k">${k}</span><span class="v">${v}</span></div>` : '';
+  el.innerHTML = `
+    ${row('종류', `<span class="swatch" style="display:inline-block;background:${o.color}"></span> ${o.label}`)}
+    ${row('도형', o.ann)}
+    ${row('번호', o.numbers.join(', ') || '-')}
+    ${row('추가숫자', o.addNumbers.join(', '))}
+    ${row('OCR', o.text ? `<b style="color:#fff">${o.text}</b>` : '')}
+    ${row('검사코드', o.checks.join(', '))}
+    ${row('objectID', `<span style="font-size:11px;color:#999">${o.id}</span>`)}
+    ${row('좌표', `${Math.round(o.bbox.x0)}, ${Math.round(o.bbox.y0)} ~ ${Math.round(o.bbox.x1)}, ${Math.round(o.bbox.y1)}`)}
+  `;
+  rs.style.display = '';
+  document.getElementById('stOk').className = rv.status === 'OK' ? 'on-ok' : '';
+  document.getElementById('stNg').className = rv.status === 'NG' ? 'on-ng' : '';
+  document.getElementById('stUn').className = !rv.status ? 'on-un' : '';
+  document.getElementById('memo').value = rv.memo || '';
+}
+
+function updateProgress() {
+  let tot = 0, done = 0;
+  for (const img of images) for (const o of img.objs) { tot++; if (getReview(img, o).status) done++; }
+  document.getElementById('progress').textContent = tot ? `검수 ${done}/${tot}` : '';
+}
+
+/* ===== 검수 액션 ===== */
+function setStatus(st) {
+  if (!sel) return;
+  const img = images[cur];
+  const curSt = getReview(img, sel).status;
+  setReview(img, sel, { status: curSt === st ? '' : st });
+  renderDetail(); renderObjList(); renderImageList(); updateProgress(); render();
+}
+
+/* ===== 내보내기 ===== */
+function download(name, content, type) {
+  const blob = new Blob([content], { type });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+function exportCsv() {
+  if (!images.length) return alert('불러온 데이터가 없습니다.');
+  const esc = s => `"${String(s ?? '').replace(/"/g, '""')}"`;
+  const rows = [['image', 'dataID', 'objectID', 'annotation', 'label', 'number', 'addNumber', 'ocrText', 'checkCode', 'status', 'memo']];
+  for (const img of images) for (const o of img.objs) {
+    const rv = getReview(img, o);
+    rows.push([img.name, img.dataID, o.id, o.ann, o.label, o.numbers.join('|'),
+      o.addNumbers.join('|'), o.text, o.checks.join('|'),
+      rv.status === 'OK' ? '정상' : rv.status === 'NG' ? '오류' : '미검수', rv.memo]);
+  }
+  const csv = '﻿' + rows.map(r => r.map(esc).join(',')).join('\r\n');
+  download('defect_review.csv', csv, 'text/csv;charset=utf-8');
+}
+
+function exportJson() {
+  if (!records.length) return alert('불러온 JSON이 없습니다.');
+  const lines = images.map(img => {
+    const rec = JSON.parse(JSON.stringify(img.rec));
+    const node = rec[img.akey];
+    for (const d of node.data || []) {
+      const o = img.objs.find(x => x.id === d.objectID);
+      if (!o) continue;
+      const rv = getReview(img, o);
+      if (rv.status || rv.memo) {
+        d.value.review = { status: rv.status || '미검수', memo: rv.memo || '' };
+      }
+    }
+    return JSON.stringify(rec);
+  });
+  download('result_reviewed.json', lines.join('\n') + '\n', 'application/json');
+}
+
+/* ===== 이벤트 ===== */
+document.getElementById('btnFolder').onclick = pickFolder;
+document.getElementById('btnJson').onclick = pickJson;
+document.getElementById('btnCsv').onclick = exportCsv;
+document.getElementById('btnJsonOut').onclick = exportJson;
+document.getElementById('stOk').onclick = () => setStatus('OK');
+document.getElementById('stNg').onclick = () => setStatus('NG');
+document.getElementById('stUn').onclick = () => setStatus('');
+document.getElementById('memo').oninput = e => {
+  if (!sel) return;
+  setReview(images[cur], sel, { memo: e.target.value });
+  renderObjList();
+};
+document.getElementById('optLabels').onchange = render;
+document.getElementById('optIsolate').onchange = () => { renderObjList(); render(); };
+document.getElementById('optFull').onchange = () => { fitView(); render(); };
+
+// 줌/팬
+let drag = null;
+cv.addEventListener('mousedown', e => {
+  drag = { x: e.clientX, y: e.clientY, ox: view.ox, oy: view.oy, moved: false };
+});
+window.addEventListener('mousemove', e => {
+  if (!drag) return;
+  const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+  if (Math.abs(dx) > 3 || Math.abs(dy) > 3) drag.moved = true;
+  const dpr = window.devicePixelRatio || 1;
+  view.ox = drag.ox + dx * dpr; view.oy = drag.oy + dy * dpr;
+  render();
+});
+window.addEventListener('mouseup', e => {
+  if (drag && !drag.moved && e.target === cv) {
+    const r = cv.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
+    const hit = hitTest((e.clientX - r.left) * dpr, (e.clientY - r.top) * dpr);
+    sel = hit; if (hit) selNum = null;
+    renderSidebars(); render();
+  }
+  drag = null;
+});
+cv.addEventListener('wheel', e => {
+  e.preventDefault();
+  const r = cv.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
+  const mx = (e.clientX - r.left) * dpr, my = (e.clientY - r.top) * dpr;
+  const p = toImage(mx, my);
+  const f = e.deltaY < 0 ? 1.15 : 1 / 1.15;
+  view.scale *= f;
+  view.ox = mx - p.x * view.scale;
+  view.oy = my - p.y * view.scale;
+  render();
+}, { passive: false });
+
+window.addEventListener('keydown', e => {
+  if (e.target.tagName === 'TEXTAREA' || e.target.tagName === 'INPUT') return;
+  const k = e.key.toLowerCase();
+  if (k === 'o') setStatus('OK');
+  else if (k === 'x') setStatus('NG');
+  else if (k === 'u') setStatus('');
+  else if (k === 'f') { fitView(); render(); }
+  else if (k === 'a') { const c = document.getElementById('optFull'); c.checked = !c.checked; fitView(); render(); }
+  else if (k === 'l') { const c = document.getElementById('optLabels'); c.checked = !c.checked; render(); }
+  else if (k === 'escape') { sel = null; selNum = null; renderSidebars(); render(); }
+  else if (k === '[') { const i = images.findIndex((x, j) => j < cur && x.file); if (cur > 0) { for (let j = cur - 1; j >= 0; j--) if (images[j].file) { selectImage(j); break; } } }
+  else if (k === ']') { for (let j = cur + 1; j < images.length; j++) if (images[j].file) { selectImage(j); break; } }
+});
+
+// 드래그앤드롭
+const center = document.getElementById('center');
+center.addEventListener('dragover', e => { e.preventDefault(); center.classList.add('dragover'); });
+center.addEventListener('dragleave', () => center.classList.remove('dragover'));
+center.addEventListener('drop', async e => {
+  e.preventDefault();
+  center.classList.remove('dragover');
+  const items = [...e.dataTransfer.items].map(i => i.webkitGetAsEntry && i.webkitGetAsEntry()).filter(Boolean);
+  const files = [];
+  async function walk(entry) {
+    if (entry.isFile) {
+      files.push(await new Promise(r => entry.file(r)));
+    } else if (entry.isDirectory) {
+      const reader = entry.createReader();
+      let batch;
+      do {
+        batch = await new Promise(r => reader.readEntries(r));
+        for (const en of batch) await walk(en);
+      } while (batch.length);
+    }
+  }
+  if (items.length) { for (const it of items) await walk(it); }
+  else files.push(...e.dataTransfer.files);
+  if (files.length) ingest(files);
+});
+
+window.addEventListener('resize', () => { render(); });
+render();
+</script>
+</body>
+</html>
