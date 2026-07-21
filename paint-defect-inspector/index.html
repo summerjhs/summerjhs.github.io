@@ -409,6 +409,17 @@ function zoomTo(bbox) {
 
 /* ===== 표시 여부 ===== */
 function inNumGroup(o, n) { return o.numbers.includes(n); }
+/* 번호 그룹(X자·지시선·원기호·텍스트)을 감싸는 합집합 bbox. 매칭 없으면 null */
+function numGroupBox(img, n) {
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity, hit = false;
+  for (const o of img.objs) {
+    if (!inNumGroup(o, n)) continue;
+    hit = true;
+    x0 = Math.min(x0, o.bbox.x0); y0 = Math.min(y0, o.bbox.y0);
+    x1 = Math.max(x1, o.bbox.x1); y1 = Math.max(y1, o.bbox.y1);
+  }
+  return hit ? { x0, y0, x1, y1 } : null;
+}
 function isActive(o) {
   if (sel) return o === sel;
   if (selNum) return inNumGroup(o, selNum);
@@ -643,7 +654,15 @@ function renderSidebars() {
     c.className = 'numchip' + (selNum === n ? ' active' : '');
     c.textContent = n;
     c.title = img.objs.filter(o => inNumGroup(o, n)).map(o => o.ltext).join('\n');
-    c.onclick = () => { selNum = selNum === n ? null : n; sel = null; renderSidebars(); render(); };
+    c.onclick = () => {
+      const on = selNum !== n;          // 이번 클릭으로 켜지는가
+      selNum = on ? n : null; sel = null;
+      if (document.getElementById('optIsolate').checked) {
+        if (on) { const gb = numGroupBox(images[cur], n); if (gb) zoomTo(gb); }
+        else fitView();
+      }
+      renderSidebars(); render();
+    };
     nd.appendChild(c);
   });
 
