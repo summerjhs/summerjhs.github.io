@@ -1,0 +1,604 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VOC XML Viewer — 이미지·XML 매칭 검수</title>
+<style>
+:root{
+  --blue-1:#D2E0FB; --cream:#FEF9D9; --sage:#DEE5D4; --blue-2:#8EACCD;
+  --bg:#f7faff; --surface:#ffffff; --border:#ccdaf2; --border-hi:#8EACCD;
+  --text:#121c2e; --muted:#3f5170; --dim:#5a6b88;
+  --accent:#D2E0FB; --accent-hi:#8EACCD;
+  --danger:#c0392b; --danger-soft:#fdecea; --ok:#2e7d5b;
+  --radius:12px; --ease:cubic-bezier(.4,0,.2,1);
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%}
+body{
+  font-family:'Pretendard',-apple-system,BlinkMacSystemFont,'Apple SD Gothic Neo','Segoe UI','Malgun Gothic',sans-serif;
+  background:var(--bg); color:var(--text); letter-spacing:-.01em;
+  display:flex; flex-direction:column; height:100vh; overflow:hidden;
+  -webkit-font-smoothing:antialiased;
+}
+
+/* ===== Topbar ===== */
+.topbar{
+  display:flex; align-items:center; gap:14px; flex-wrap:wrap;
+  padding:12px 18px; background:var(--surface);
+  border-bottom:1px solid var(--border); z-index:10;
+}
+.topbar .brand{display:flex;align-items:center;gap:10px}
+.topbar .brand a{color:var(--muted);text-decoration:none;font-size:13px}
+.topbar .brand a:hover{color:var(--text)}
+.topbar h1{font-size:16px;font-weight:650;letter-spacing:-.02em}
+.spacer{flex:1}
+.btn{
+  border:1px solid var(--border); background:var(--surface); color:var(--text);
+  padding:8px 14px; border-radius:9px; font-size:13px; font-weight:550;
+  cursor:pointer; transition:all .18s var(--ease); white-space:nowrap;
+  display:inline-flex; align-items:center; gap:6px;
+}
+.btn:hover:not(:disabled){background:var(--blue-1);border-color:var(--border-hi)}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn.primary{background:var(--blue-1)}
+.btn.primary:hover:not(:disabled){background:var(--blue-2);border-color:var(--blue-2)}
+.btn.danger{color:var(--danger)}
+.btn.danger.active{background:var(--danger);color:#fff;border-color:var(--danger)}
+.btn.excel{background:#e6f4ea;border-color:#bfe3ca;color:var(--ok)}
+.btn.excel:hover:not(:disabled){background:#d3ecdc}
+.stats{font-size:12.5px;color:var(--muted);display:flex;gap:12px;flex-wrap:wrap}
+.stats b{color:var(--text);font-weight:600}
+.stats .warn{color:var(--danger)}
+
+/* ===== Layout ===== */
+.main{flex:1;display:flex;min-height:0}
+.sidebar{
+  width:308px; flex-shrink:0; background:var(--surface);
+  border-right:1px solid var(--border); display:flex; flex-direction:column; min-height:0;
+}
+.side-tools{padding:10px 12px;border-bottom:1px solid var(--border);display:flex;flex-direction:column;gap:8px}
+.search{
+  width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:8px;
+  font-size:12.5px;font-family:inherit;
+}
+.search:focus{outline:none;border-color:var(--border-hi)}
+.filters{display:flex;gap:5px;flex-wrap:wrap}
+.chip{
+  font-size:11.5px;padding:4px 9px;border-radius:999px;cursor:pointer;
+  border:1px solid var(--border);background:var(--surface);color:var(--muted);
+  transition:all .15s var(--ease);
+}
+.chip.active{background:var(--blue-2);color:#fff;border-color:var(--blue-2)}
+.imglist{flex:1;overflow-y:auto;padding:6px}
+.item{
+  display:flex;align-items:center;gap:8px;padding:7px 9px;border-radius:8px;
+  cursor:pointer;font-size:12px;line-height:1.35;color:var(--text);
+  border:1px solid transparent;
+}
+.item:hover{background:var(--bg)}
+.item.sel{background:var(--blue-1);border-color:var(--border-hi)}
+.item .idx{color:var(--dim);font-size:10.5px;flex-shrink:0;width:34px;text-align:right;font-variant-numeric:tabular-nums}
+.item .nm{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.item .badge{flex-shrink:0;font-size:10px;padding:1px 6px;border-radius:6px;font-weight:600}
+.badge.b-unable{background:var(--danger-soft);color:var(--danger)}
+.badge.b-nomatch{background:#fff3cd;color:#8a6d00}
+.badge.b-cnt{background:var(--sage);color:#2c3e2c}
+.item.unable .nm{color:var(--danger);text-decoration:line-through;text-decoration-color:rgba(192,57,43,.4)}
+
+/* ===== Viewer ===== */
+.viewer{flex:1;display:flex;flex-direction:column;min-width:0;background:var(--bg)}
+.vtoolbar{
+  display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+  padding:9px 16px;background:var(--surface);border-bottom:1px solid var(--border);
+}
+.vtoolbar .fname{font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:46vw}
+.toggle{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);cursor:pointer;user-select:none}
+.toggle input{accent-color:var(--blue-2)}
+.slider-ctl{gap:5px}
+.slider-ctl input[type=range]{width:66px;accent-color:var(--blue-2);cursor:pointer}
+.slider-ctl span{font-variant-numeric:tabular-nums;color:var(--text);min-width:22px;text-align:right}
+.zoomctl{display:inline-flex;align-items:center;gap:4px}
+.iconbtn{
+  width:30px;height:30px;border:1px solid var(--border);background:var(--surface);
+  border-radius:8px;cursor:pointer;font-size:15px;line-height:1;color:var(--text);
+  display:grid;place-items:center;transition:all .15s var(--ease);
+}
+.iconbtn:hover:not(:disabled){background:var(--blue-1)}
+.iconbtn:disabled{opacity:.4;cursor:not-allowed}
+.stage{flex:1;position:relative;overflow:hidden;min-height:0}
+.canvas-wrap{position:absolute;inset:0;display:grid;place-items:center;overflow:auto}
+#imgCanvas{display:block;background:#1b2330;box-shadow:0 4px 24px rgba(18,28,46,.2)}
+.empty{
+  position:absolute;inset:0;display:grid;place-items:center;text-align:center;
+  color:var(--muted);padding:40px;
+}
+.empty .big{font-size:44px;margin-bottom:14px;opacity:.5}
+.empty p{font-size:14px;line-height:1.7}
+.empty .hint{font-size:12px;color:var(--dim);margin-top:14px}
+.unable-banner{
+  position:absolute;top:14px;left:50%;transform:translateX(-50%);
+  background:var(--danger);color:#fff;padding:7px 16px;border-radius:999px;
+  font-size:12.5px;font-weight:600;box-shadow:0 4px 16px rgba(192,57,43,.35);
+  display:none;z-index:5;
+}
+
+/* ===== Right panel ===== */
+.detail{
+  width:290px;flex-shrink:0;background:var(--surface);border-left:1px solid var(--border);
+  display:flex;flex-direction:column;min-height:0;
+}
+.detail h3{font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;padding:12px 14px 8px}
+.meta{padding:0 14px 12px;font-size:12px;color:var(--muted);line-height:1.7;border-bottom:1px solid var(--border)}
+.meta b{color:var(--text)}
+.unable-box{padding:12px 14px;border-bottom:1px solid var(--border)}
+.unable-box textarea{
+  width:100%;margin-top:8px;padding:7px 9px;border:1px solid var(--border);border-radius:8px;
+  font-size:12px;font-family:inherit;resize:vertical;min-height:52px;
+}
+.unable-box textarea:focus{outline:none;border-color:var(--border-hi)}
+.objlist{flex:1;overflow-y:auto;padding:6px 10px}
+.obj{
+  display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:7px;font-size:12px;
+  cursor:pointer;border:1px solid transparent;
+}
+.obj:hover{background:var(--bg)}
+.obj.hl{background:var(--cream);border-color:var(--border)}
+.obj .sw{width:12px;height:12px;border-radius:3px;flex-shrink:0}
+.obj .lbl{font-weight:700;min-width:20px}
+.obj .co{color:var(--dim);font-size:10.5px;font-variant-numeric:tabular-nums}
+.legend{padding:8px 14px;border-top:1px solid var(--border);font-size:11px;color:var(--dim);display:flex;flex-wrap:wrap;gap:6px}
+.legend .lg{display:inline-flex;align-items:center;gap:4px}
+.legend .lg i{width:10px;height:10px;border-radius:2px;display:inline-block}
+
+/* progress overlay */
+.loading{position:fixed;inset:0;background:rgba(247,250,255,.85);display:none;place-items:center;z-index:50}
+.loading.show{display:grid}
+.loading .card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:26px 34px;text-align:center;box-shadow:0 12px 40px rgba(18,28,46,.18)}
+.loading .bar{width:220px;height:6px;background:var(--bg);border-radius:99px;margin-top:14px;overflow:hidden}
+.loading .bar i{display:block;height:100%;background:var(--blue-2);width:0;transition:width .1s linear}
+
+@media (max-width:1100px){.detail{width:240px}.sidebar{width:250px}}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="brand">
+    <a href="../">&larr; Tools</a>
+    <h1>VOC XML Viewer</h1>
+  </div>
+  <div class="spacer"></div>
+  <div class="stats" id="stats">폴더를 불러오세요</div>
+  <button class="btn primary" onclick="pickFolder()">&#128193; 폴더 열기</button>
+  <button class="btn excel" id="btnExcel" disabled onclick="exportXlsx()">&#128202; 작업불가 xlsx</button>
+  <input type="file" id="folderInput" webkitdirectory multiple hidden>
+</div>
+
+<div class="main">
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="side-tools">
+      <input class="search" id="search" placeholder="파일명 검색…" oninput="renderList()">
+      <div class="filters" id="filters">
+        <span class="chip active" data-f="all" onclick="setFilter('all')">전체</span>
+        <span class="chip" data-f="unable" onclick="setFilter('unable')">🚫 작업불가</span>
+        <span class="chip" data-f="nomatch" onclick="setFilter('nomatch')">⚠ 미매칭</span>
+        <span class="chip" data-f="matched" onclick="setFilter('matched')">✓ 매칭</span>
+      </div>
+    </div>
+    <div class="imglist" id="imglist"></div>
+  </aside>
+
+  <!-- Viewer -->
+  <section class="viewer">
+    <div class="vtoolbar">
+      <button class="iconbtn" id="prevBtn" onclick="nav(-1)" disabled title="이전 (←)">&#8249;</button>
+      <button class="iconbtn" id="nextBtn" onclick="nav(1)" disabled title="다음 (→)">&#8250;</button>
+      <span class="fname" id="fname">—</span>
+      <div class="spacer" style="flex:1"></div>
+      <label class="toggle"><input type="checkbox" id="tgBox" checked onchange="draw()"> 박스</label>
+      <label class="toggle"><input type="checkbox" id="tgLabel" checked onchange="draw()"> 라벨</label>
+      <label class="toggle slider-ctl" title="박스 두께">두께
+        <input type="range" id="boxWidth" min="0.5" max="6" step="0.5" value="1.8" oninput="onSlider('bw')">
+        <span id="bwVal">1.8</span>
+      </label>
+      <label class="toggle slider-ctl" title="라벨 크기">라벨
+        <input type="range" id="labelSize" min="8" max="32" step="1" value="13" oninput="onSlider('ls')">
+        <span id="lsVal">13</span>
+      </label>
+      <div class="zoomctl">
+        <button class="iconbtn" onclick="zoom(-1)" title="축소">&#8722;</button>
+        <span id="zoomLabel" style="font-size:12px;color:var(--muted);min-width:44px;text-align:center">Fit</span>
+        <button class="iconbtn" onclick="zoom(1)" title="확대">&#43;</button>
+        <button class="iconbtn" onclick="zoomFit()" title="맞춤">&#9634;</button>
+      </div>
+      <button class="btn danger" id="btnUnable" disabled onclick="toggleUnable()">&#128683; 작업 불가</button>
+    </div>
+    <div class="stage">
+      <div class="canvas-wrap" id="canvasWrap">
+        <canvas id="imgCanvas"></canvas>
+      </div>
+      <div class="unable-banner" id="unableBanner">🚫 작업 불가로 표시됨</div>
+      <div class="empty" id="empty">
+        <div>
+          <div class="big">&#128450;</div>
+          <p><b>이미지·XML 폴더</b>를 불러오세요.<br>이미지와 XML 파일이 파일명으로 자동 매칭됩니다.</p>
+          <p class="hint">HV1A 같은 상위 폴더를 선택하면 하위의 images/xml을 자동 탐색합니다.<br>← → 이동 · Space 작업불가 토글</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Detail -->
+  <aside class="detail">
+    <h3>이미지 정보</h3>
+    <div class="meta" id="meta">—</div>
+    <div class="unable-box">
+      <label class="toggle" style="font-weight:600;color:var(--text)">
+        <input type="checkbox" id="unableChk" disabled onchange="toggleUnable()"> 이 이미지 작업 불가
+      </label>
+      <textarea id="unableReason" placeholder="사유 (선택 입력)" disabled onchange="saveReason()"></textarea>
+    </div>
+    <h3>객체 목록 <span id="objCount" style="color:var(--dim);font-weight:400"></span></h3>
+    <div class="objlist" id="objlist"></div>
+    <div class="legend">
+      <span class="lg"><i style="background:#4ea1ff"></i>박스</span>
+      <span class="lg"><i style="background:var(--danger)"></i>작업불가</span>
+    </div>
+  </aside>
+</div>
+
+<div class="loading" id="loading">
+  <div class="card">
+    <div id="loadMsg">불러오는 중…</div>
+    <div class="bar"><i id="loadBar"></i></div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script>
+// ── 상태 ─────────────────────────────────────────────
+let entries = [];          // {stem, filename, imgFile, xmlFile, objects, size, unable, reason}
+let cur = -1;              // 현재 선택 index (entries 기준)
+let filtered = [];        // 현재 필터/검색 적용된 index 목록
+let filterMode = 'all';
+let scale = 0;            // 0 = fit
+let curImg = null;        // Image 객체
+let curUrl = null;
+let hlObj = -1;          // 하이라이트 객체 index
+let boxW = 1.8;          // 박스 선 두께(px)
+let labelSize = 13;      // 라벨 글자 크기(px)
+
+function onSlider(which){
+  if(which==='bw'){ boxW=parseFloat(document.getElementById('boxWidth').value); document.getElementById('bwVal').textContent=boxW; }
+  else{ labelSize=parseInt(document.getElementById('labelSize').value); document.getElementById('lsVal').textContent=labelSize; }
+  draw();
+}
+
+const PALETTE = ['#4ea1ff','#ff8f4e','#43c59e','#c576f6','#ffd23f','#ff6b8b','#5ad6ff','#9ccc65'];
+
+// ── 폴더 로드 ────────────────────────────────────────
+function pickFolder(){ document.getElementById('folderInput').click(); }
+
+document.getElementById('folderInput').addEventListener('change', async (e)=>{
+  const files = Array.from(e.target.files || []);
+  if(!files.length) return;
+  await loadFiles(files);
+  e.target.value = '';
+});
+
+function showLoading(msg){ document.getElementById('loadMsg').textContent = msg; document.getElementById('loading').classList.add('show'); }
+function setProgress(p){ document.getElementById('loadBar').style.width = Math.round(p*100)+'%'; }
+function hideLoading(){ document.getElementById('loading').classList.remove('show'); }
+
+async function loadFiles(files){
+  showLoading('파일 분류 중…');
+  const imgMap = new Map();   // stem -> File
+  const xmlMap = new Map();   // stem -> File
+  for(const f of files){
+    const name = f.name;
+    const lower = name.toLowerCase();
+    const stem = name.replace(/\.[^.]+$/, '');
+    if(/\.(jpe?g|png|bmp|webp)$/.test(lower)) imgMap.set(stem, f);
+    else if(lower.endsWith('.xml')) xmlMap.set(stem, f);
+  }
+  const stems = new Set([...imgMap.keys(), ...xmlMap.keys()]);
+  const list = [...stems].sort((a,b)=>a.localeCompare(b,'ko'));
+
+  entries = [];
+  let done = 0;
+  for(const stem of list){
+    const imgFile = imgMap.get(stem) || null;
+    const xmlFile = xmlMap.get(stem) || null;
+    let objects = [], size = null;
+    if(xmlFile){
+      try{
+        const txt = await xmlFile.text();
+        const p = parseVoc(txt);
+        objects = p.objects; size = p.size;
+      }catch(err){ /* ignore parse fail */ }
+    }
+    entries.push({
+      stem, filename: imgFile ? imgFile.name : (xmlFile ? xmlFile.name : stem),
+      imgFile, xmlFile, objects, size, unable:false, reason:''
+    });
+    done++;
+    if(done % 25 === 0){ setProgress(done/list.length); document.getElementById('loadMsg').textContent = `XML 파싱 중… ${done}/${list.length}`; await new Promise(r=>setTimeout(r)); }
+  }
+  hideLoading();
+  filterMode='all'; document.querySelectorAll('.chip').forEach(c=>c.classList.toggle('active', c.dataset.f==='all'));
+  renderList();
+  updateStats();
+  document.getElementById('btnExcel').disabled = false;
+  // 첫 매칭 이미지 자동 선택
+  const first = entries.findIndex(e=>e.imgFile);
+  if(first>=0) select(first);
+}
+
+// ── PASCAL VOC 파서 ──────────────────────────────────
+function parseVoc(xmlText){
+  const doc = new DOMParser().parseFromString(xmlText, 'text/xml');
+  const sz = doc.querySelector('size');
+  const size = sz ? {
+    w: parseInt(sz.querySelector('width')?.textContent)||0,
+    h: parseInt(sz.querySelector('height')?.textContent)||0
+  } : null;
+  const objects = [];
+  doc.querySelectorAll('object').forEach(o=>{
+    const name = (o.querySelector('name')?.textContent || '').trim();
+    const bb = o.querySelector('bndbox');
+    if(!bb) return;
+    const xmin = parseFloat(bb.querySelector('xmin')?.textContent);
+    const ymin = parseFloat(bb.querySelector('ymin')?.textContent);
+    const xmax = parseFloat(bb.querySelector('xmax')?.textContent);
+    const ymax = parseFloat(bb.querySelector('ymax')?.textContent);
+    if([xmin,ymin,xmax,ymax].some(v=>isNaN(v))) return;
+    objects.push({name, xmin, ymin, xmax, ymax});
+  });
+  return {objects, size};
+}
+
+// ── 리스트 렌더 ──────────────────────────────────────
+function passFilter(e){
+  if(filterMode==='unable') return e.unable;
+  if(filterMode==='nomatch') return !e.imgFile || !e.xmlFile;
+  if(filterMode==='matched') return e.imgFile && e.xmlFile;
+  return true;
+}
+function setFilter(f){
+  filterMode=f;
+  document.querySelectorAll('.chip').forEach(c=>c.classList.toggle('active', c.dataset.f===f));
+  renderList();
+}
+function renderList(){
+  const q = document.getElementById('search').value.trim().toLowerCase();
+  const box = document.getElementById('imglist');
+  box.innerHTML='';
+  filtered=[];
+  entries.forEach((e,i)=>{
+    if(!passFilter(e)) return;
+    if(q && !e.filename.toLowerCase().includes(q)) return;
+    filtered.push(i);
+  });
+  filtered.forEach((i)=>{
+    const e=entries[i];
+    const div=document.createElement('div');
+    div.className='item'+(i===cur?' sel':'')+(e.unable?' unable':'');
+    let badge='';
+    if(e.unable) badge='<span class="badge b-unable">불가</span>';
+    else if(!e.imgFile) badge='<span class="badge b-nomatch">img없음</span>';
+    else if(!e.xmlFile) badge='<span class="badge b-nomatch">xml없음</span>';
+    else badge=`<span class="badge b-cnt">${e.objects.length}</span>`;
+    div.innerHTML=`<span class="idx">${i+1}</span><span class="nm" title="${e.filename}">${e.filename}</span>${badge}`;
+    div.onclick=()=>select(i);
+    box.appendChild(div);
+  });
+}
+
+// ── 선택 ─────────────────────────────────────────────
+async function select(i){
+  if(i<0||i>=entries.length) return;
+  cur=i; hlObj=-1;
+  const e=entries[i];
+  // 리스트 하이라이트
+  renderList();
+  const selEl=document.querySelector('.item.sel'); if(selEl) selEl.scrollIntoView({block:'nearest'});
+
+  document.getElementById('fname').textContent = e.filename;
+  document.getElementById('prevBtn').disabled = false;
+  document.getElementById('nextBtn').disabled = false;
+  document.getElementById('btnUnable').disabled = false;
+  document.getElementById('unableChk').disabled = false;
+  document.getElementById('unableReason').disabled = false;
+  updateUnableUI();
+  renderMeta();
+  renderObjs();
+
+  // 이미지 로드
+  if(curUrl){ URL.revokeObjectURL(curUrl); curUrl=null; }
+  document.getElementById('empty').style.display='none';
+  if(e.imgFile){
+    curUrl=URL.createObjectURL(e.imgFile);
+    curImg=new Image();
+    curImg.onload=()=>{ scale=0; draw(); };
+    curImg.src=curUrl;
+  }else{
+    curImg=null;
+    const cv=document.getElementById('imgCanvas'); const ctx=cv.getContext('2d');
+    cv.width=600;cv.height=200;ctx.fillStyle='#1b2330';ctx.fillRect(0,0,cv.width,cv.height);
+    ctx.fillStyle='#8EACCD';ctx.font='16px sans-serif';ctx.textAlign='center';
+    ctx.fillText('이미지 파일 없음 (XML만 존재)', 300,105);
+  }
+}
+function nav(d){
+  if(!filtered.length) return;
+  let pos=filtered.indexOf(cur);
+  if(pos<0){ select(filtered[0]); return; }
+  pos=(pos+d+filtered.length)%filtered.length;
+  select(filtered[pos]);
+}
+
+// ── 캔버스 그리기 ────────────────────────────────────
+function draw(){
+  if(!curImg||cur<0) return;
+  const e=entries[cur];
+  const cv=document.getElementById('imgCanvas');
+  const ctx=cv.getContext('2d');
+  const iw=curImg.naturalWidth, ih=curImg.naturalHeight;
+
+  let s=scale;
+  if(s===0){ // fit
+    const wrap=document.getElementById('canvasWrap');
+    const availW=wrap.clientWidth-24, availH=wrap.clientHeight-24;
+    s=Math.min(availW/iw, availH/ih);
+    if(s>4) s=4;
+    document.getElementById('zoomLabel').textContent='Fit';
+  }else{
+    document.getElementById('zoomLabel').textContent=Math.round(s*100)+'%';
+  }
+  cv.width=Math.round(iw*s); cv.height=Math.round(ih*s);
+  ctx.imageSmoothingEnabled=true;
+  ctx.drawImage(curImg,0,0,cv.width,cv.height);
+
+  const showBox=document.getElementById('tgBox').checked;
+  const showLabel=document.getElementById('tgLabel').checked;
+  if(!showBox && !showLabel) return;
+
+  const pad=Math.max(2, Math.round(labelSize*0.3));
+  const labelH=labelSize+pad*2;
+  e.objects.forEach((o,idx)=>{
+    const col=PALETTE[idx%PALETTE.length];
+    const x=o.xmin*s, y=o.ymin*s, w=(o.xmax-o.xmin)*s, h=(o.ymax-o.ymin)*s;
+    const isHl=idx===hlObj;
+    if(showBox){
+      ctx.lineWidth=isHl?boxW+1.5:boxW;
+      ctx.strokeStyle=isHl?'#fff':col;
+      ctx.strokeRect(x,y,w,h);
+      if(isHl){ ctx.lineWidth=boxW; ctx.strokeStyle=col; ctx.strokeRect(x,y,w,h); }
+    }
+    if(showLabel && o.name){
+      ctx.font=`bold ${labelSize}px sans-serif`;
+      const tw=ctx.measureText(o.name).width;
+      const boxLblW=tw+pad*2;
+      // 라벨 위치: 박스 위 우선, 위 공간 없으면 박스 아래로 (박스 안을 가리지 않도록)
+      let ly=y-labelH;                                   // 박스 위
+      if(ly<0){                                          // 위 공간 부족 → 아래로
+        ly=y+h;
+        if(ly+labelH>cv.height) ly=Math.max(0, y);       // 아래도 부족하면 상단 클램프
+      }
+      let lx=x;
+      if(lx+boxLblW>cv.width) lx=Math.max(0, cv.width-boxLblW);   // 우측 넘침 방지
+      ctx.fillStyle=col;
+      ctx.fillRect(lx, ly, boxLblW, labelH);
+      ctx.fillStyle='#0b0f16';
+      ctx.textAlign='left'; ctx.textBaseline='middle';
+      ctx.fillText(o.name, lx+pad, ly+labelH/2+0.5);
+    }
+  });
+}
+function zoom(d){
+  const iw=curImg?curImg.naturalWidth:0; if(!iw) return;
+  if(scale===0){ // 현재 fit 배율 계산 후 조정
+    const wrap=document.getElementById('canvasWrap');
+    scale=Math.min((wrap.clientWidth-24)/iw,(wrap.clientHeight-24)/curImg.naturalHeight);
+  }
+  scale=Math.max(.1, Math.min(8, scale*(d>0?1.25:0.8)));
+  draw();
+}
+function zoomFit(){ scale=0; draw(); }
+window.addEventListener('resize', ()=>{ if(scale===0) draw(); });
+
+// ── 우측 패널 ────────────────────────────────────────
+function renderMeta(){
+  const e=entries[cur];
+  const sz=e.size?`${e.size.w} × ${e.size.h}`:(curImg?`${curImg.naturalWidth} × ${curImg.naturalHeight}`:'—');
+  let m=`파일: <b>${e.filename}</b><br>`;
+  m+=`이미지: ${e.imgFile?'<b>있음</b>':'<span style="color:var(--danger)">없음</span>'} · `;
+  m+=`XML: ${e.xmlFile?'<b>있음</b>':'<span style="color:var(--danger)">없음</span>'}<br>`;
+  m+=`크기: <b>${sz}</b> · 객체: <b>${e.objects.length}</b>개`;
+  document.getElementById('meta').innerHTML=m;
+}
+function renderObjs(){
+  const e=entries[cur];
+  const box=document.getElementById('objlist');
+  document.getElementById('objCount').textContent=`(${e.objects.length})`;
+  box.innerHTML='';
+  e.objects.forEach((o,idx)=>{
+    const col=PALETTE[idx%PALETTE.length];
+    const div=document.createElement('div');
+    div.className='obj'+(idx===hlObj?' hl':'');
+    div.innerHTML=`<span class="sw" style="background:${col}"></span>`+
+      `<span class="lbl">${o.name||'∅'}</span>`+
+      `<span class="co">[${Math.round(o.xmin)}, ${Math.round(o.ymin)}, ${Math.round(o.xmax)}, ${Math.round(o.ymax)}]</span>`;
+    div.onmouseenter=()=>{ hlObj=idx; draw(); div.classList.add('hl'); };
+    div.onmouseleave=()=>{ hlObj=-1; draw(); div.classList.remove('hl'); };
+    box.appendChild(div);
+  });
+}
+
+// ── 작업 불가 ────────────────────────────────────────
+function toggleUnable(){
+  if(cur<0) return;
+  const e=entries[cur];
+  e.unable=!e.unable;
+  updateUnableUI(); renderList(); updateStats();
+}
+function updateUnableUI(){
+  const e=entries[cur];
+  const on=e.unable;
+  document.getElementById('unableChk').checked=on;
+  document.getElementById('unableReason').value=e.reason||'';
+  const btn=document.getElementById('btnUnable');
+  btn.classList.toggle('active',on);
+  btn.innerHTML=on?'🚫 작업불가 해제':'🚫 작업 불가';
+  document.getElementById('unableBanner').style.display=on?'block':'none';
+}
+function saveReason(){
+  if(cur<0) return;
+  entries[cur].reason=document.getElementById('unableReason').value;
+}
+
+// ── 통계 ─────────────────────────────────────────────
+function updateStats(){
+  const total=entries.length;
+  const matched=entries.filter(e=>e.imgFile&&e.xmlFile).length;
+  const nomatch=entries.filter(e=>!e.imgFile||!e.xmlFile).length;
+  const unable=entries.filter(e=>e.unable).length;
+  const objs=entries.reduce((s,e)=>s+e.objects.length,0);
+  document.getElementById('stats').innerHTML=
+    `총 <b>${total}</b> · 매칭 <b>${matched}</b> · 미매칭 <b>${nomatch}</b> · 객체 <b>${objs}</b> · <span class="warn">작업불가 <b>${unable}</b></span>`;
+}
+
+// ── xlsx 추출 ────────────────────────────────────────
+function exportXlsx(){
+  const rows=entries.filter(e=>e.unable);
+  if(!rows.length){ alert('작업 불가로 표시된 이미지가 없습니다.'); return; }
+  const data=rows.map((e,i)=>({
+    'No': i+1,
+    '파일명': e.filename,
+    '이미지': e.imgFile?'있음':'없음',
+    'XML': e.xmlFile?'있음':'없음',
+    '객체수': e.objects.length,
+    '사유': e.reason||''
+  }));
+  const ws=XLSX.utils.json_to_sheet(data, {header:['No','파일명','이미지','XML','객체수','사유']});
+  ws['!cols']=[{wch:5},{wch:70},{wch:7},{wch:7},{wch:7},{wch:40}];
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, '작업불가');
+  const d=new Date();
+  const ts=`${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}`;
+  XLSX.writeFile(wb, `작업불가_리스트_${ts}.xlsx`);
+}
+
+// ── 키보드 ───────────────────────────────────────────
+document.addEventListener('keydown',(e)=>{
+  const tag=(e.target.tagName||'').toLowerCase();
+  if(tag==='input'||tag==='textarea') return;
+  if(e.key==='ArrowLeft'){ nav(-1); e.preventDefault(); }
+  else if(e.key==='ArrowRight'){ nav(1); e.preventDefault(); }
+  else if(e.key===' '){ toggleUnable(); e.preventDefault(); }
+});
+</script>
+</body>
+</html>
