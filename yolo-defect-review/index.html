@@ -63,10 +63,13 @@
   .empty-state code{background:var(--panel2);padding:2px 6px;border-radius:5px;color:var(--text)}
   /* lightbox */
   #lb{position:fixed;inset:0;background:rgba(18,28,46,.88);display:none;z-index:50;
-      align-items:center;justify-content:center;flex-direction:column;padding:20px}
+      align-items:center;justify-content:center;flex-direction:row;gap:14px;padding:20px}
   #lb.on{display:flex}
-  #lbstage{position:relative;line-height:0}
-  #lbcv{max-width:95vw;max-height:82vh;box-shadow:0 10px 40px rgba(0,0,0,.6);cursor:none}
+  /* 좌측: 이미지 영역(남는 폭을 채움) / 우측: 오류 패널(고정) → 서로 겹치지 않음 */
+  #lbmain{position:relative;flex:1 1 auto;min-width:0;height:100%;
+          display:flex;flex-direction:column;align-items:center;justify-content:center}
+  #lbstage{position:relative;line-height:0;max-width:100%}
+  #lbcv{max-width:100%;max-height:82vh;box-shadow:0 10px 40px rgba(0,0,0,.6);cursor:none}
   #loupe{position:absolute;pointer-events:none;display:none;border-radius:50%;
          border:2px solid rgba(255,255,255,.85);box-shadow:0 6px 24px rgba(0,0,0,.7);
          image-rendering:pixelated;background:#0a0c10}
@@ -74,7 +77,7 @@
   #lbcap{margin-top:12px;color:#eef3fb;font-size:13px}
   #lbhint{margin-top:6px;color:#aebbd2;font-size:12px}
   /* 오류 체크 패널 */
-  #errpanel{position:absolute;top:64px;right:18px;width:300px;max-height:82vh;overflow:auto;
+  #errpanel{flex:0 0 300px;align-self:center;max-height:90vh;overflow:auto;
             background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:12px;display:none}
   #errpanel .ep-h{font-weight:650;margin-bottom:8px}
   #errpanel .ep-hint{color:var(--muted);font-size:12px;line-height:1.6}
@@ -184,11 +187,13 @@
 
 <div id="lb">
   <button class="close" title="닫기 (Esc)">✕</button>
-  <button class="nav prev" title="이전 (←)">‹</button>
-  <button class="nav next" title="다음 (→)">›</button>
-  <div id="lbstage"><canvas id="lbcv"></canvas><canvas id="loupe"></canvas></div>
-  <div id="lbcap"></div>
-  <div id="lbhint">박스 클릭 / 빈 곳 더블클릭 → 오류 체크 · 돋보기: 마우스 올리기 · 확대 <kbd>+</kbd>/<kbd>-</kbd> · 표시 토글 <kbd>H</kbd> · 이동 <kbd>D</kbd><kbd>F</kbd> 또는 <kbd>←</kbd><kbd>→</kbd></div>
+  <div id="lbmain">
+    <button class="nav prev" title="이전 (←)">‹</button>
+    <button class="nav next" title="다음 (→)">›</button>
+    <div id="lbstage"><canvas id="lbcv"></canvas><canvas id="loupe"></canvas></div>
+    <div id="lbcap"></div>
+    <div id="lbhint">박스 클릭 / 빈 곳 더블클릭 → 오류 체크 · 돋보기: 마우스 올리기 · 확대 <kbd>+</kbd>/<kbd>-</kbd> · 표시 토글 <kbd>H</kbd> · 이동 <kbd>D</kbd><kbd>F</kbd> 또는 <kbd>←</kbd><kbd>→</kbd></div>
+  </div>
   <div id="errpanel"></div>
 </div>
 
@@ -764,7 +769,8 @@ function renderErrPanel(){
   const base=it.base;
   const arr=state.errors.get(base)||[];
   let html=`<div class="ep-h">Error check <span class="muted">(${arr.length})</span></div>`;
-  const sel = (state.selBase===base) ? state.sel : null;
+  let sel = (state.selBase===base) ? state.sel : null;
+  if(sel && sel.mode==='box' && !it.boxes[sel.boxIndex]) sel=null;   // 선택한 박스가 사라졌으면 선택 해제
   if(!sel){
     html+=`<div class="ep-hint">Click a box to select it, or <b>double-click a spot</b> to mark a missing object, then choose the error type.</div>`;
   } else {
@@ -867,7 +873,7 @@ function closeLightbox(){ $('lb').classList.remove('on'); hideLoupe(); renderErr
 $('lb').querySelector('.close').onclick=closeLightbox;
 $('lb').querySelector('.prev').onclick=()=>lbStep(-1);
 $('lb').querySelector('.next').onclick=()=>lbStep(1);
-$('lb').onclick=e=>{ if(e.target.id==='lb') closeLightbox(); };
+$('lb').onclick=e=>{ if(e.target.id==='lb'||e.target.id==='lbmain') closeLightbox(); };
 
 // 박스/라벨을 그리드·라이트박스 모두에 다시 반영
 function redrawAll(){ renderPage(); if($('lb').classList.contains('on')) drawLightbox(); }
