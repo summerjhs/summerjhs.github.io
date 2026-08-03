@@ -84,6 +84,7 @@ body{
 .badge.b-unable{background:var(--danger-soft);color:var(--danger)}
 .badge.b-nomatch{background:#fff3cd;color:#8a6d00}
 .badge.b-cnt{background:var(--sage);color:#2c3e2c}
+.badge.b-edge{background:#ffe3e0;color:var(--danger);padding:1px 4px}
 .item.unable .nm{color:var(--danger);text-decoration:line-through;text-decoration-color:rgba(192,57,43,.4)}
 
 /* ===== Viewer ===== */
@@ -147,6 +148,7 @@ body{
 .obj .sw{width:12px;height:12px;border-radius:3px;flex-shrink:0}
 .obj .lbl{font-weight:700;min-width:20px}
 .obj .co{color:var(--dim);font-size:10.5px;font-variant-numeric:tabular-nums}
+.obj .edge-tag{margin-left:auto;font-size:11px}
 .legend{padding:8px 14px;border-top:1px solid var(--border);font-size:11px;color:var(--dim);display:flex;flex-wrap:wrap;gap:6px}
 .legend .lg{display:inline-flex;align-items:center;gap:4px}
 .legend .lg i{width:10px;height:10px;border-radius:2px;display:inline-block}
@@ -182,6 +184,7 @@ body{
       <input class="search" id="search" placeholder="파일명 검색…" oninput="renderList()">
       <div class="filters" id="filters">
         <span class="chip active" data-f="all" onclick="setFilter('all')">전체</span>
+        <span class="chip" data-f="edge" onclick="setFilter('edge')">🔲 외곽선 접촉</span>
         <span class="chip" data-f="unable" onclick="setFilter('unable')">🚫 작업불가</span>
         <span class="chip" data-f="nomatch" onclick="setFilter('nomatch')">⚠ 미매칭</span>
         <span class="chip" data-f="matched" onclick="setFilter('matched')">✓ 매칭</span>
@@ -207,6 +210,7 @@ body{
         <input type="range" id="labelSize" min="8" max="32" step="1" value="13" oninput="onSlider('ls')">
         <span id="lsVal">13</span>
       </label>
+      <button class="btn" id="btnRegion" onclick="toggleRegion()" title="박스가 모인 영역만 확대해서 보기">&#128269; 박스영역 보기</button>
       <div class="zoomctl">
         <button class="iconbtn" onclick="zoom(-1)" title="축소">&#8722;</button>
         <span id="zoomLabel" style="font-size:12px;color:var(--muted);min-width:44px;text-align:center">Fit</span>
@@ -244,6 +248,7 @@ body{
     <div class="objlist" id="objlist"></div>
     <div class="legend">
       <span class="lg"><i style="background:#4ea1ff"></i>박스</span>
+      <span class="lg"><i style="background:#ff3b30;border:1px dashed #ff3b30"></i>외곽접촉</span>
       <span class="lg"><i style="background:var(--danger)"></i>작업불가</span>
     </div>
   </aside>
@@ -269,6 +274,8 @@ let curUrl = null;
 let hlObj = -1;          // 하이라이트 객체 index
 let boxW = 1.8;          // 박스 선 두께(px)
 let labelSize = 13;      // 라벨 글자 크기(px)
+let viewRegion = false;  // false=원본, true=박스영역 확대
+const EDGE_TOL = 1;      // 외곽선 접촉 판정 허용오차(px)
 
 function onSlider(which){
   if(which==='bw'){ boxW=parseFloat(document.getElementById('boxWidth').value); document.getElementById('bwVal').textContent=boxW; }
@@ -319,9 +326,10 @@ async function loadFiles(files){
         objects = p.objects; size = p.size;
       }catch(err){ /* ignore parse fail */ }
     }
+    const edgeTouch = markEdges(objects, size);
     entries.push({
       stem, filename: imgFile ? imgFile.name : (xmlFile ? xmlFile.name : stem),
-      imgFile, xmlFile, objects, size, unable:false, reason:''
+      imgFile, xmlFile, objects, size, edgeTouch, unable:false, reason:''
     });
     done++;
     if(done % 25 === 0){ setProgress(done/list.length); document.getElementById('loadMsg').textContent = `XML 파싱 중… ${done}/${list.length}`; await new Promise(r=>setTimeout(r)); }
@@ -359,9 +367,21 @@ function parseVoc(xmlText){
   return {objects, size};
 }
 
+// 각 객체가 이미지 외곽선에 닿는지 표시하고, 하나라도 닿으면 true 반환
+function markEdges(objects, size){
+  if(!size || !size.w || !size.h){ objects.forEach(o=>o.edge=false); return false; }
+  let any=false;
+  objects.forEach(o=>{
+    o.edge = (o.xmin<=EDGE_TOL || o.ymin<=EDGE_TOL || o.xmax>=size.w-EDGE_TOL || o.ymax>=size.h-EDGE_TOL);
+    if(o.edge) any=true;
+  });
+  return any;
+}
+
 // ── 리스트 렌더 ──────────────────────────────────────
 function passFilter(e){
   if(filterMode==='unable') return e.unable;
+  if(filterMode==='edge') return e.edgeTouch;
   if(filterMode==='nomatch') return !e.imgFile || !e.xmlFile;
   if(filterMode==='matched') return e.imgFile && e.xmlFile;
   return true;
@@ -390,6 +410,7 @@ function renderList(){
     else if(!e.imgFile) badge='<span class="badge b-nomatch">img없음</span>';
     else if(!e.xmlFile) badge='<span class="badge b-nomatch">xml없음</span>';
     else badge=`<span class="badge b-cnt">${e.objects.length}</span>`;
+    if(e.edgeTouch && !e.unable) badge=`<span class="badge b-edge" title="바운딩박스가 외곽선에 닿음">🔲</span>`+badge;
     div.innerHTML=`<span class="idx">${i+1}</span><span class="nm" title="${e.filename}">${e.filename}</span>${badge}`;
     div.onclick=()=>select(i);
     box.appendChild(div);
@@ -421,7 +442,15 @@ async function select(i){
   if(e.imgFile){
     curUrl=URL.createObjectURL(e.imgFile);
     curImg=new Image();
-    curImg.onload=()=>{ scale=0; draw(); };
+    curImg.onload=()=>{
+      // XML에 size가 없던 경우 실제 이미지 크기로 외곽선 접촉 재계산
+      if(!e.size || !e.size.w || !e.size.h){
+        e.size={w:curImg.naturalWidth, h:curImg.naturalHeight};
+        e.edgeTouch=markEdges(e.objects, e.size);
+        renderList(); updateStats(); renderMeta(); renderObjs();
+      }
+      scale=0; draw();
+    };
     curImg.src=curUrl;
   }else{
     curImg=null;
@@ -440,26 +469,43 @@ function nav(d){
 }
 
 // ── 캔버스 그리기 ────────────────────────────────────
+// 화면에 표시할 원본 영역(px). 박스영역 보기면 모든 박스의 합집합+여백, 아니면 전체.
+function getSourceRect(){
+  const iw=curImg.naturalWidth, ih=curImg.naturalHeight;
+  const objs = cur>=0 ? entries[cur].objects : [];
+  if(viewRegion && objs.length){
+    let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;
+    objs.forEach(o=>{minX=Math.min(minX,o.xmin);minY=Math.min(minY,o.ymin);maxX=Math.max(maxX,o.xmax);maxY=Math.max(maxY,o.ymax);});
+    const padX=Math.max(12,(maxX-minX)*0.06), padY=Math.max(12,(maxY-minY)*0.10);
+    minX=Math.max(0,minX-padX); minY=Math.max(0,minY-padY);
+    maxX=Math.min(iw,maxX+padX); maxY=Math.min(ih,maxY+padY);
+    return {sx:minX,sy:minY,sw:maxX-minX,sh:maxY-minY};
+  }
+  return {sx:0,sy:0,sw:iw,sh:ih};
+}
+function fitScale(sw,sh){
+  const wrap=document.getElementById('canvasWrap');
+  const s=Math.min((wrap.clientWidth-24)/sw,(wrap.clientHeight-24)/sh);
+  return Math.min(s, 8);
+}
+
 function draw(){
   if(!curImg||cur<0) return;
   const e=entries[cur];
   const cv=document.getElementById('imgCanvas');
   const ctx=cv.getContext('2d');
-  const iw=curImg.naturalWidth, ih=curImg.naturalHeight;
+  const {sx,sy,sw,sh}=getSourceRect();
 
   let s=scale;
   if(s===0){ // fit
-    const wrap=document.getElementById('canvasWrap');
-    const availW=wrap.clientWidth-24, availH=wrap.clientHeight-24;
-    s=Math.min(availW/iw, availH/ih);
-    if(s>4) s=4;
+    s=fitScale(sw,sh);
     document.getElementById('zoomLabel').textContent='Fit';
   }else{
     document.getElementById('zoomLabel').textContent=Math.round(s*100)+'%';
   }
-  cv.width=Math.round(iw*s); cv.height=Math.round(ih*s);
+  cv.width=Math.max(1,Math.round(sw*s)); cv.height=Math.max(1,Math.round(sh*s));
   ctx.imageSmoothingEnabled=true;
-  ctx.drawImage(curImg,0,0,cv.width,cv.height);
+  ctx.drawImage(curImg, sx,sy,sw,sh, 0,0,cv.width,cv.height);
 
   const showBox=document.getElementById('tgBox').checked;
   const showLabel=document.getElementById('tgLabel').checked;
@@ -469,13 +515,17 @@ function draw(){
   const labelH=labelSize+pad*2;
   e.objects.forEach((o,idx)=>{
     const col=PALETTE[idx%PALETTE.length];
-    const x=o.xmin*s, y=o.ymin*s, w=(o.xmax-o.xmin)*s, h=(o.ymax-o.ymin)*s;
+    const x=(o.xmin-sx)*s, y=(o.ymin-sy)*s, w=(o.xmax-o.xmin)*s, h=(o.ymax-o.ymin)*s;
     const isHl=idx===hlObj;
     if(showBox){
       ctx.lineWidth=isHl?boxW+1.5:boxW;
       ctx.strokeStyle=isHl?'#fff':col;
       ctx.strokeRect(x,y,w,h);
       if(isHl){ ctx.lineWidth=boxW; ctx.strokeStyle=col; ctx.strokeRect(x,y,w,h); }
+      if(o.edge){ // 외곽선 접촉 박스: 빨간 점선 강조
+        ctx.save(); ctx.setLineDash([6,4]); ctx.lineWidth=Math.max(1.2,boxW);
+        ctx.strokeStyle='#ff3b30'; ctx.strokeRect(x,y,w,h); ctx.restore();
+      }
     }
     if(showLabel && o.name){
       ctx.font=`bold ${labelSize}px sans-serif`;
@@ -498,15 +548,23 @@ function draw(){
   });
 }
 function zoom(d){
-  const iw=curImg?curImg.naturalWidth:0; if(!iw) return;
+  if(!curImg) return;
   if(scale===0){ // 현재 fit 배율 계산 후 조정
-    const wrap=document.getElementById('canvasWrap');
-    scale=Math.min((wrap.clientWidth-24)/iw,(wrap.clientHeight-24)/curImg.naturalHeight);
+    const {sw,sh}=getSourceRect();
+    scale=fitScale(sw,sh);
   }
-  scale=Math.max(.1, Math.min(8, scale*(d>0?1.25:0.8)));
+  scale=Math.max(.05, Math.min(8, scale*(d>0?1.25:0.8)));
   draw();
 }
 function zoomFit(){ scale=0; draw(); }
+function toggleRegion(){
+  viewRegion=!viewRegion;
+  const btn=document.getElementById('btnRegion');
+  btn.classList.toggle('primary', viewRegion);
+  btn.innerHTML = viewRegion ? '🖼 원본 보기' : '🔍 박스영역 보기';
+  scale=0;               // 새 영역에 맞춰 재-fit
+  draw();
+}
 window.addEventListener('resize', ()=>{ if(scale===0) draw(); });
 
 // ── 우측 패널 ────────────────────────────────────────
@@ -530,7 +588,8 @@ function renderObjs(){
     div.className='obj'+(idx===hlObj?' hl':'');
     div.innerHTML=`<span class="sw" style="background:${col}"></span>`+
       `<span class="lbl">${o.name||'∅'}</span>`+
-      `<span class="co">[${Math.round(o.xmin)}, ${Math.round(o.ymin)}, ${Math.round(o.xmax)}, ${Math.round(o.ymax)}]</span>`;
+      `<span class="co">[${Math.round(o.xmin)}, ${Math.round(o.ymin)}, ${Math.round(o.xmax)}, ${Math.round(o.ymax)}]</span>`+
+      (o.edge?`<span class="edge-tag" title="외곽선 접촉">🔲</span>`:'');
     div.onmouseenter=()=>{ hlObj=idx; draw(); div.classList.add('hl'); };
     div.onmouseleave=()=>{ hlObj=-1; draw(); div.classList.remove('hl'); };
     box.appendChild(div);
@@ -565,9 +624,10 @@ function updateStats(){
   const matched=entries.filter(e=>e.imgFile&&e.xmlFile).length;
   const nomatch=entries.filter(e=>!e.imgFile||!e.xmlFile).length;
   const unable=entries.filter(e=>e.unable).length;
+  const edge=entries.filter(e=>e.edgeTouch).length;
   const objs=entries.reduce((s,e)=>s+e.objects.length,0);
   document.getElementById('stats').innerHTML=
-    `총 <b>${total}</b> · 매칭 <b>${matched}</b> · 미매칭 <b>${nomatch}</b> · 객체 <b>${objs}</b> · <span class="warn">작업불가 <b>${unable}</b></span>`;
+    `총 <b>${total}</b> · 매칭 <b>${matched}</b> · 미매칭 <b>${nomatch}</b> · 객체 <b>${objs}</b> · <span class="warn">외곽접촉 <b>${edge}</b></span> · <span class="warn">작업불가 <b>${unable}</b></span>`;
 }
 
 // ── xlsx 추출 ────────────────────────────────────────
