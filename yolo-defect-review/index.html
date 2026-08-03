@@ -1,0 +1,1134 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>YOLO 라벨 뷰어</title>
+<style>
+  :root{
+    /* summerjhs.github.io 파스텔 팔레트에 맞춤 */
+    --blue-1:#D2E0FB; --cream:#FEF9D9; --sage:#DEE5D4; --blue-2:#8EACCD;
+    --bg:#f7faff; --panel:#ffffff; --panel2:#eef3fb; --border:#ccdaf2;
+    --text:#121c2e; --muted:#3f5170; --accent:#8EACCD; --accent2:#8EACCD;
+    --good:#2e9e6a; --warn:#c07a1e;
+  }
+  *{box-sizing:border-box}
+  /* 세로 스크롤바 자리를 항상 확보 → 토글 시 뷰포트 너비가 바뀌어 좌우로 흔들리는 현상 방지 */
+  html{overflow-y:scroll;scrollbar-gutter:stable}
+  body{margin:0;font-family:'Pretendard',-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;
+       background:var(--bg);color:var(--text);font-size:14px;-webkit-font-smoothing:antialiased;letter-spacing:-0.01em}
+  /* 파스텔 앰비언트 워시 (사이트와 통일) */
+  body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:-1;
+    background:
+      radial-gradient(900px 420px at 50% -150px,var(--blue-1),transparent 70%),
+      radial-gradient(720px 360px at 90% 2%,var(--cream),transparent 72%),
+      radial-gradient(700px 380px at 6% 16%,var(--sage),transparent 70%);
+    opacity:.55}
+  header{position:sticky;top:0;z-index:20;background:rgba(247,250,255,.9);backdrop-filter:blur(8px);
+         border-bottom:1px solid var(--border);padding:10px 16px}
+  .row{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+  h1{font-size:15px;margin:0 12px 0 0;font-weight:650}
+  .btn{background:var(--panel2);border:1px solid var(--border);color:var(--text);
+       padding:7px 12px;border-radius:8px;cursor:pointer;font-size:13px}
+  .btn:hover{border-color:var(--accent)}
+  .btn.primary{background:var(--blue-1);border-color:var(--blue-1);color:var(--text);font-weight:550}
+  .btn.primary:hover{background:var(--blue-2);border-color:var(--blue-2)}
+  label.file{display:inline-flex;align-items:center;gap:6px}
+  input[type=file]{display:none}
+  select,input[type=number],input[type=search]{background:var(--panel2);border:1px solid var(--border);color:var(--text);
+       border-radius:8px;padding:6px 8px;font-size:13px}
+  input[type=search]{width:240px}
+  input[type=search]:focus{outline:none;border-color:var(--accent)}
+  mark{background:#ffe08a;color:#121c2e;border-radius:3px;padding:0 1px}
+  .muted{color:var(--muted)}
+  .pill{background:var(--panel2);border:1px solid var(--border);border-radius:999px;padding:3px 10px;font-size:12px}
+  .stat{font-variant-numeric:tabular-nums}
+  #legend{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+  .lg{display:inline-flex;align-items:center;gap:6px;padding:3px 9px;border-radius:999px;
+      border:1px solid var(--border);cursor:pointer;font-size:12px;user-select:none;background:var(--panel)}
+  .lg .sw{width:11px;height:11px;border-radius:3px}
+  .lg.off{opacity:.35}
+  main{padding:16px}
+  #grid{display:grid;gap:14px;grid-template-columns:repeat(auto-fill,minmax(var(--card,300px),1fr))}
+  .card{background:var(--panel);border:1px solid var(--border);border-radius:12px;overflow:hidden;
+        display:flex;flex-direction:column;box-shadow:0 1px 2px rgba(18,28,46,.04),0 8px 24px -16px rgba(18,28,46,.18)}
+  .cvwrap{position:relative;background:#e9eef7;display:flex;align-items:center;justify-content:center;cursor:zoom-in}
+  .cvwrap canvas{max-width:100%;height:auto;display:block}
+  .cap{padding:7px 10px;border-top:1px solid var(--border);display:flex;justify-content:space-between;gap:8px}
+  .cap .nm{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:12px}
+  .cap .ct{color:var(--muted);font-size:12px;flex:none}
+  .cap .ct.empty{color:var(--warn)}
+  #pager{display:flex;gap:8px;align-items:center;justify-content:center;padding:18px}
+  .empty-state{text-align:center;color:var(--muted);padding:60px 20px;line-height:1.7}
+  .empty-state code{background:var(--panel2);padding:2px 6px;border-radius:5px;color:var(--text)}
+  /* lightbox */
+  #lb{position:fixed;inset:0;background:rgba(18,28,46,.88);display:none;z-index:50;
+      align-items:center;justify-content:center;flex-direction:column;padding:20px}
+  #lb.on{display:flex}
+  #lbstage{position:relative;line-height:0}
+  #lbcv{max-width:95vw;max-height:82vh;box-shadow:0 10px 40px rgba(0,0,0,.6);cursor:none}
+  #loupe{position:absolute;pointer-events:none;display:none;border-radius:50%;
+         border:2px solid rgba(255,255,255,.85);box-shadow:0 6px 24px rgba(0,0,0,.7);
+         image-rendering:pixelated;background:#0a0c10}
+  #loupe.on{display:block}
+  #lbcap{margin-top:12px;color:#eef3fb;font-size:13px}
+  #lbhint{margin-top:6px;color:#aebbd2;font-size:12px}
+  /* 오류 체크 패널 */
+  #errpanel{position:absolute;top:64px;right:18px;width:300px;max-height:82vh;overflow:auto;
+            background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:12px;display:none}
+  #errpanel .ep-h{font-weight:650;margin-bottom:8px}
+  #errpanel .ep-hint{color:var(--muted);font-size:12px;line-height:1.6}
+  #errpanel .ep-sel{font-size:12px;margin-bottom:8px;padding:6px 8px;background:var(--panel2);border-radius:8px}
+  #errpanel .ep-types{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}
+  #errpanel .ep-type{background:var(--panel2);border:1px solid var(--border);color:var(--text);
+                     padding:6px 9px;border-radius:8px;cursor:pointer;font-size:12px}
+  #errpanel .ep-type:hover{border-color:var(--accent)}
+  #errpanel .ep-type.on{background:#c0392b;border-color:#c0392b;color:#fff;font-weight:600}
+  #errpanel .ep-corr-label{font-size:11px;margin:8px 0 4px}
+  #errpanel .ep-cls{background:var(--panel2);border:1px solid var(--border);color:var(--text);
+                    padding:5px 8px;border-radius:8px;cursor:pointer;font-size:12px}
+  #errpanel .ep-cls:hover{border-color:var(--accent)}
+  #errpanel .ep-cls.on{background:var(--blue-2);border-color:var(--blue-2);color:var(--text);font-weight:600}
+  #errpanel .ep-refs{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px}
+  #errpanel .ep-ref{display:flex;flex-direction:column;align-items:center;gap:3px;width:82px;
+                    background:var(--panel2);border:1px solid var(--border);color:var(--muted);
+                    padding:4px;border-radius:8px;cursor:pointer;font-size:11px;font-variant-numeric:tabular-nums}
+  #errpanel .ep-ref:hover{border-color:var(--accent)}
+  #errpanel .ep-ref.on{background:var(--good);border-color:var(--good);color:#04140c;font-weight:700}
+  #errpanel .ep-thumb{width:72px;height:54px;object-fit:cover;border-radius:5px;background:#0a0c10;display:block}
+  #errpanel .ep-reflabel{line-height:1}
+  #errpanel .ep-refnames{font-size:11px;line-height:1.6;margin-bottom:6px}
+  #errpanel textarea{width:100%;min-height:60px;background:var(--panel2);border:1px solid var(--border);
+                     color:var(--text);border-radius:8px;padding:6px 8px;font-size:12px;resize:vertical;font-family:inherit}
+  #errpanel .ep-btns{display:flex;gap:8px;margin-top:8px}
+  #errpanel .ep-list{margin-top:12px;border-top:1px solid var(--border);padding-top:8px}
+  #errpanel .ep-item{font-size:12px;padding:6px 8px;border-radius:8px;cursor:pointer;line-height:1.5}
+  #errpanel .ep-item:hover{background:var(--panel2)}
+  #errpanel .ep-item.on{background:var(--panel2);outline:1px solid var(--accent)}
+  #lb .nav{position:absolute;top:50%;transform:translateY(-50%);font-size:30px;color:#fff;
+           background:rgba(255,255,255,.1);border:none;width:52px;height:64px;cursor:pointer;border-radius:10px}
+  #lb .nav.prev{left:16px}#lb .nav.next{right:16px}
+  #lb .close{position:absolute;top:16px;right:20px;font-size:26px;color:#fff;background:none;border:none;cursor:pointer}
+  kbd{background:var(--panel2);border:1px solid var(--border);border-bottom-width:2px;border-radius:5px;padding:1px 6px;font-size:11px}
+</style>
+</head>
+<body>
+<header>
+  <div class="row">
+    <h1>YOLO 라벨 뷰어</h1>
+    <label class="file btn primary"><span>① 이미지 폴더</span>
+      <input type="file" id="imgIn" webkitdirectory directory multiple></label>
+    <label class="file btn"><span>② 라벨(.txt) 폴더</span>
+      <input type="file" id="lblIn" webkitdirectory directory multiple></label>
+    <label class="file btn"><span>클래스 이름(선택)</span>
+      <input type="file" id="clsIn" accept=".txt,.yaml,.yml,.names"></label>
+    <span class="muted" id="hint">폴더는 같아도 되고 달라도 됩니다.</span>
+  </div>
+  <div class="row" style="margin-top:8px">
+    <span class="pill stat" id="sTotal">이미지 0</span>
+    <span class="pill stat" id="sLabeled">라벨 0</span>
+    <span class="pill stat" id="sBoxes">박스 0</span>
+    <label class="muted">보기
+      <select id="fMode">
+        <option value="all">전체</option>
+        <option value="labeled">라벨 있는 것만</option>
+        <option value="empty">라벨 없는 것만</option>
+      </select></label>
+    <label class="muted">오류
+      <select id="fErr">
+        <option value="all">전체</option>
+        <option value="has">오류 있음</option>
+        <option value="none">오류 없음</option>
+        <option value="Wrong class">Wrong class</option>
+        <option value="Not a target">Not a target</option>
+        <option value="Missing object">Missing object</option>
+        <option value="Consistency">Consistency</option>
+        <option value="Other">Other</option>
+      </select></label>
+    <label class="muted">정렬
+      <select id="fSort">
+        <option value="name">이름순</option>
+        <option value="boxdesc">박스 많은 순</option>
+        <option value="boxasc">박스 적은 순</option>
+      </select></label>
+    <label class="muted">페이지당
+      <select id="perPage">
+        <option>24</option><option>48</option><option selected>60</option><option>120</option>
+      </select></label>
+    <label class="muted">카드 크기
+      <input type="range" id="cardSize" min="180" max="520" value="300" style="vertical-align:middle;width:90px"></label>
+    <label class="muted">선 굵기
+      <input type="range" id="lineW" min="1" max="6" value="1" step="1" style="vertical-align:middle;width:80px"></label>
+    <label class="muted">라벨 크기
+      <input type="range" id="labelSize" min="0.5" max="3" value="1" step="0.25" style="vertical-align:middle;width:80px"></label>
+    <label class="muted"><input type="checkbox" id="showBoxes" checked> 박스</label>
+    <label class="muted"><input type="checkbox" id="showLabels" checked> 클래스명</label>
+    <span class="muted">표시 토글 <kbd>H</kbd></span>
+    <button class="btn" id="exportPptx" title="오류가 기록된 이미지를 PPTX로 내보내기">⬇ 오류 PPTX</button>
+    <button class="btn" id="clearErrors" title="기록된 모든 오류 삭제">🗑 오류 전체 삭제</button>
+    <input type="search" id="q" placeholder="이미지 이름 검색…" autocomplete="off">
+    <span class="muted stat" id="qInfo"></span>
+  </div>
+  <div id="legend"></div>
+</header>
+
+<main>
+  <div id="grid"></div>
+  <div id="pager"></div>
+  <div class="empty-state" id="welcome">
+    위의 <b>① 이미지 폴더</b>와 <b>② 라벨 폴더</b>를 선택하세요.<br>
+    파일 이름(확장자 제외)이 같은 <code>image.jpg ↔ image.txt</code> 를 자동으로 매칭합니다.<br>
+    <span style="font-size:12px">모든 처리는 이 브라우저 안에서만 이뤄지며, 파일은 어디에도 업로드되지 않습니다.</span>
+  </div>
+</main>
+
+<div id="lb">
+  <button class="close" title="닫기 (Esc)">✕</button>
+  <button class="nav prev" title="이전 (←)">‹</button>
+  <button class="nav next" title="다음 (→)">›</button>
+  <div id="lbstage"><canvas id="lbcv"></canvas><canvas id="loupe"></canvas></div>
+  <div id="lbcap"></div>
+  <div id="lbhint">박스 클릭 / 빈 곳 더블클릭 → 오류 체크 · 돋보기: 마우스 올리기 · 확대 <kbd>+</kbd>/<kbd>-</kbd> · 표시 토글 <kbd>H</kbd> · 이동 <kbd>D</kbd><kbd>F</kbd> 또는 <kbd>←</kbd><kbd>→</kbd></div>
+  <div id="errpanel"></div>
+</div>
+
+<script>
+const IMG_EXT = ['jpg','jpeg','png','bmp','webp','tif','tiff','gif'];
+const state = {
+  images: new Map(),   // base -> {file, name}
+  labels: new Map(),   // base -> File (.txt)
+  names: {0:'Contamination',1:'Drop',2:'Damage',3:'Sagging',4:'Pinhole',5:'Light_reflection'}, // classId -> name (기본 클래스)
+  classSet: new Set(), // seen class ids
+  classOff: new Set(), // hidden class ids
+  items: [],           // filtered+sorted list of {base,name,file,boxes,count}
+  parsed: new Map(),   // base -> boxes[] (cache)
+  page: 0,
+  lbList: [], lbIdx: 0,
+  showBoxes: true,     // 박스 표시 여부 (단축키 H로 토글)
+  lineW: 1,            // 박스 선 굵기 (툴에서 조절)
+  labelScale: 1,       // 라벨 텍스트 크기 배율 (툴에서 조절)
+  errors: new Map(),   // base -> Array<err>  (err: {kind:'box'|'point', boxIndex?, x?, y?, type, note, correct?})
+  selBase: null, sel: null   // 선택: {mode:'box',boxIndex} | {mode:'point',x,y}
+};
+
+// 오류 종류 5가지 (영문)
+const ERR_TYPES = ['Wrong class','Not a target','Missing object','Consistency','Other'];
+const ERR_NEEDS_CLASS = ['Wrong class','Missing object'];   // 정답 클래스 선택 UI를 띄우는 오류 종류
+const needsClass = t => ERR_NEEDS_CLASS.includes(t);
+const ERR_KEY = 'yolo_viewer_errors_v2';
+
+function loadErrors(){
+  const m=new Map();
+  try{
+    const o=JSON.parse(localStorage.getItem(ERR_KEY)||'null');
+    if(o){ for(const b in o){ if(Array.isArray(o[b]) && o[b].length) m.set(b, o[b]); } return m; }
+    // 구버전(v1: base -> {boxIndex:{type,note}}) 마이그레이션
+    const o1=JSON.parse(localStorage.getItem('yolo_viewer_errors_v1')||'{}');
+    for(const b in o1){ const arr=[]; for(const k in o1[b]){ const e=o1[b][k]; arr.push({kind:'box', boxIndex:+k, type:e.type, note:e.note||''}); } if(arr.length) m.set(b, arr); }
+  }catch(e){}
+  return m;
+}
+function saveErrors(){
+  const o={};
+  for(const [b,arr] of state.errors){ if(arr&&arr.length) o[b]=arr; }
+  try{ localStorage.setItem(ERR_KEY, JSON.stringify(o)); }catch(e){}
+}
+const cnum = n => n<=20 ? String.fromCharCode(0x2460+n-1) : '('+n+')';   // 원문자 ①②…
+const xmlEsc = s => String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&apos;'}[c]));
+
+const $ = id => document.getElementById(id);
+const extOf = n => (n.split('.').pop()||'').toLowerCase();
+// 이미지(image.jpg)와 라벨(image.txt, image.jpg.txt) 모두 같은 키로 정규화
+function baseOf(n){
+  let s = n.toLowerCase();
+  s = s.replace(/\.(txt|json)$/,'');                       // 라벨 확장자 제거
+  s = s.replace(/\.(jpe?g|png|bmp|webp|tiff?|gif)$/,'');    // 이미지 확장자 제거 (image.jpg.txt 대응)
+  return s;
+}
+
+// 특정 클래스는 공식 색 대신 지정 색으로 덮어씀 (0번 빨강과 5번이 비슷해 5번을 짙은 네이비로)
+const COLOR_OVERRIDE = { 5:'#1f3a93' };
+function colorFor(id){
+  if(COLOR_OVERRIDE[id]) return COLOR_OVERRIDE[id];
+  const h = (id*67)%360, s=100, l=58;   // 채도↑ 로 어두운 배경에서도 선명하게
+  return `hsl(${h} ${s}% ${l}%)`;
+}
+
+$('imgIn').addEventListener('change', e=>{
+  for(const f of e.target.files){
+    if(IMG_EXT.includes(extOf(f.name))) state.images.set(baseOf(f.name), {file:f, name:f.name});
+  }
+  invalidate();          // 새 파일이 들어왔으므로 파싱 캐시를 버린다
+  refresh();
+});
+$('lblIn').addEventListener('change', e=>{
+  for(const f of e.target.files){
+    if(extOf(f.name)==='txt') state.labels.set(baseOf(f.name), f);
+  }
+  invalidate();
+  refresh();
+});
+
+// 폴더를 나중에 추가/교체해도 이전의 빈 결과가 남지 않도록 캐시를 초기화
+function invalidate(){ state.parsed.clear(); state.classSet.clear(); }
+$('clsIn').addEventListener('change', async e=>{
+  const f = e.target.files[0]; if(!f) return;
+  const txt = await f.text();
+  const names = {};
+  const clean = s => s.trim().replace(/^['"]|['"]$/g,'');
+  try{
+    if(/\.json$/i.test(f.name)){
+      const j = JSON.parse(txt);
+      if(Array.isArray(j)) j.forEach((n,i)=>names[i]=clean(String(n)));
+      else Object.keys(j).forEach(k=>names[+k]=clean(String(j[k])));
+    } else if(/\.(ya?ml)$/i.test(f.name)){
+      let idx=0;
+      txt.split(/\r?\n/).forEach(line=>{
+        let m;
+        if(m=line.match(/^\s*-\s*(.+?)\s*$/)) names[idx++]=clean(m[1]);
+        else if(m=line.match(/^\s*(\d+)\s*:\s*(.+?)\s*$/)) names[+m[1]]=clean(m[2]);
+      });
+    } else {
+      // .txt / .names / .csv — one class per non-empty line.
+      // Accepts "0 Contamination", "0,Contamination", "0: Contamination", "0\tContamination", or just "Contamination".
+      let auto=0;
+      txt.split(/\r?\n/).forEach(line=>{
+        const t=line.trim(); if(!t) return;
+        const m=t.match(/^(\d+)\s*[,:\t ]\s*(.+)$/);
+        if(m) names[+m[1]]=clean(m[2]);
+        else names[auto++]=clean(t);
+      });
+    }
+  }catch(err){ alert('클래스 파일을 읽지 못했습니다: '+err.message); return; }
+  const n=Object.keys(names).length;
+  if(!n){ alert('클래스 이름을 찾지 못했습니다. 한 줄에 하나씩 적어주세요.'); return; }
+  state.names = names;
+  // 라벨의 첫 토큰이 숫자가 아니라 클래스 "이름"이었다면 지금에서야 해석 가능 → 다시 파싱
+  let total=0; for(const v of state.parsed.values()) total+=v.length;
+  if(state.labels.size && total===0){ invalidate(); await refresh(); }
+  buildLegend(); renderPage(); if($('lb').classList.contains('on')) drawLightbox();
+  $('hint').textContent = `클래스 이름 ${n}개 로드됨`;
+});
+
+async function parseLabel(base){
+  if(state.parsed.has(base)) return state.parsed.get(base);
+  const f = state.labels.get(base);
+  const boxes=[];
+  if(f){
+    let txt = await f.text();
+    txt = txt.replace(/^﻿/,'');                 // BOM 제거
+    // 클래스 이름 문자열도 인식하기 위한 역매핑 (이름 -> id)
+    const nameToId={}; for(const k in state.names){ nameToId[String(state.names[k]).toLowerCase()]=+k; }
+    for(const line of txt.split(/\r?\n/)){
+      const t = line.trim(); if(!t) continue;
+      const toks = t.split(/[\s,;\t]+/).filter(x=>x!=='');
+      if(toks.length<5) continue;
+      // 첫 토큰이 숫자(클래스 id)이거나 클래스 이름 문자열일 수 있음
+      let cls;
+      if(/^-?\d+(\.0+)?$/.test(toks[0])) cls=Math.round(Number(toks[0]));
+      else if(nameToId[toks[0].toLowerCase()]!=null) cls=nameToId[toks[0].toLowerCase()];
+      else continue;
+      const nums = toks.slice(1).map(Number);
+      if(nums.some(v=>Number.isNaN(v))) continue;
+      state.classSet.add(cls);
+      // 픽셀 좌표(값이 1보다 크게 나오는 경우) 자동 감지
+      const px = nums.slice(0,4).some(v=>v>1.5);
+      if(nums.length===4 || nums.length===5){
+        boxes.push({cls, type:'box', cx:nums[0],cy:nums[1],w:nums[2],h:nums[3], px});
+      } else if(nums.length>=6){
+        let c = nums.slice(); if(c.length%2===1) c = c.slice(0,-1);
+        const pts=[]; for(let i=0;i<c.length;i+=2) pts.push([c[i],c[i+1]]);
+        boxes.push({cls, type:'poly', pts, px:pts.some(pt=>pt[0]>1.5||pt[1]>1.5)});
+      }
+    }
+  }
+  state.parsed.set(base, boxes);
+  return boxes;
+}
+
+async function refresh(){
+  // 이미지에 매칭되는 라벨을 모두 파싱 (개수 + 등장 클래스 파악용).
+  // 수천 장이므로 동시 처리 + 진행률 표시.
+  const bases=[...state.images.keys()].filter(b=>state.labels.has(b));
+  let done=0;
+  const CONC=64;
+  for(let i=0;i<bases.length;i+=CONC){
+    await Promise.all(bases.slice(i,i+CONC).map(b=>parseLabel(b)));
+    done+=Math.min(CONC, bases.length-i);
+    if(bases.length>200) $('hint').textContent=`라벨 읽는 중… ${done}/${bases.length}`;
+  }
+  applyFilterSort();
+  buildLegend();
+  updateStats();
+  state.page=0;
+  renderPage();
+}
+
+function applyFilterSort(){
+  const mode=$('fMode').value, sort=$('fSort').value, errMode=$('fErr').value;
+  // 공백으로 나눈 여러 단어를 모두 포함하는 이름만 통과 (대소문자 무시)
+  const terms=$('q').value.toLowerCase().split(/\s+/).filter(Boolean);
+  state.terms=terms;
+  let list=[];
+  for(const [base, meta] of state.images){
+    const boxes = state.parsed.get(base)||[];
+    const count = boxes.length;
+    if(mode==='labeled' && count===0) continue;
+    if(mode==='empty' && count>0) continue;
+    // 오류 필터: 있음/없음/특정 종류
+    if(errMode!=='all'){
+      const errArr=state.errors.get(base)||[];
+      if(errMode==='has' && !errArr.length) continue;
+      else if(errMode==='none' && errArr.length) continue;
+      else if(errMode!=='has' && errMode!=='none' && !errArr.some(e=>e.type===errMode)) continue;
+    }
+    if(terms.length){
+      const n=meta.name.toLowerCase();
+      if(!terms.every(t=>n.includes(t))) continue;
+    }
+    list.push({base, name:meta.name, file:meta.file, boxes, count});
+  }
+  if(sort==='name') list.sort((a,b)=>a.name.localeCompare(b.name));
+  if(sort==='boxdesc') list.sort((a,b)=>b.count-a.count || a.name.localeCompare(b.name));
+  if(sort==='boxasc') list.sort((a,b)=>a.count-b.count || a.name.localeCompare(b.name));
+  state.items=list;
+  $('qInfo').textContent = terms.length? `검색결과 ${list.length} / ${state.images.size}` : '';
+}
+
+const esc = s => s.replace(/[&<>]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+// 검색어에 해당하는 부분을 파일명 안에서 하이라이트
+function highlight(name){
+  const terms=state.terms||[];
+  if(!terms.length) return esc(name);
+  const lo=name.toLowerCase();
+  const hits=[];
+  for(const t of terms){
+    let i=0;
+    while((i=lo.indexOf(t,i))!==-1){ hits.push([i,i+t.length]); i+=t.length; }
+  }
+  if(!hits.length) return esc(name);
+  hits.sort((a,b)=>a[0]-b[0]);
+  const merged=[hits[0]];
+  for(const h of hits.slice(1)){
+    const last=merged[merged.length-1];
+    if(h[0]<=last[1]) last[1]=Math.max(last[1],h[1]); else merged.push(h);
+  }
+  let out='', pos=0;
+  for(const [s,e] of merged){ out+=esc(name.slice(pos,s))+'<mark>'+esc(name.slice(s,e))+'</mark>'; pos=e; }
+  return out+esc(name.slice(pos));
+}
+
+function updateStats(){
+  let boxes=0, labeled=0;
+  for(const [b] of state.images){ const bx=state.parsed.get(b)||[]; boxes+=bx.length; if(bx.length)labeled++; }
+  const matched=[...state.images.keys()].filter(b=>state.labels.has(b)).length;
+  $('sTotal').textContent=`이미지 ${state.images.size}`;
+  $('sLabeled').textContent=`라벨파일 매칭 ${matched}`;
+  $('sBoxes').textContent=`박스 ${boxes}`;
+  const missImgs=[...state.labels.keys()].filter(b=>!state.images.has(b)).length;
+  let msg;
+  if(state.images.size && !state.labels.size) msg='※ 라벨(.txt) 폴더를 아직 선택하지 않았습니다.';
+  else if(state.images.size && !matched) msg='※ 이미지와 라벨 파일명이 매칭되지 않습니다 (예: 이미지 abc.jpg ↔ 라벨 abc.txt).';
+  else if(matched && !boxes) msg='※ 매칭은 됐지만 박스가 0개입니다. 라벨 파일 내용 형식을 확인하세요.';
+  else msg = missImgs? `※ 이미지 없는 라벨 ${missImgs}개` : '폴더는 같아도 되고 달라도 됩니다.';
+  $('hint').textContent = msg;
+}
+
+function buildLegend(){
+  const lg=$('legend'); lg.innerHTML='';
+  const ids=[...new Set([...state.classSet, ...Object.keys(state.names).map(Number)])].sort((a,b)=>a-b);
+  for(const id of ids){
+    const el=document.createElement('span');
+    el.className='lg'+(state.classOff.has(id)?' off':'');
+    const nm = state.names[id]!=null? state.names[id] : ('class '+id);
+    el.innerHTML=`<span class="sw" style="background:${colorFor(id)}"></span>${id}: ${nm}`;
+    el.onclick=()=>{ state.classOff.has(id)?state.classOff.delete(id):state.classOff.add(id); buildLegend(); renderPage(); if($('lb').classList.contains('on')) drawLightbox(); };
+    lg.appendChild(el);
+  }
+}
+
+// 박스(또는 폴리곤)의 픽셀 바운딩 박스
+function boxRectPx(b, W, H){
+  const sx=b.px?1:W, sy=b.px?1:H;
+  if(b.type==='box'){ const bw=b.w*sx, bh=b.h*sy; return {x:b.cx*sx-bw/2, y:b.cy*sy-bh/2, w:bw, h:bh}; }
+  let minx=1e9,miny=1e9,maxx=-1e9,maxy=-1e9;
+  b.pts.forEach(p=>{ const px=p[0]*sx, py=p[1]*sy;
+    minx=Math.min(minx,px);maxx=Math.max(maxx,px);miny=Math.min(miny,py);maxy=Math.max(maxy,py); });
+  return {x:minx,y:miny,w:maxx-minx,h:maxy-miny};
+}
+
+function drawOnCanvas(canvas, img, boxes, showNames, opts){
+  opts=opts||{};
+  const W=img.naturalWidth, H=img.naturalHeight;
+  canvas.width=W; canvas.height=H;
+  const ctx=canvas.getContext('2d');
+  ctx.drawImage(img,0,0);
+  if(!(opts.forceBoxes || state.showBoxes)) return;   // 단축키 H로 박스 전체 숨김 (내보내기는 forceBoxes)
+  const lw=state.lineW;
+  ctx.lineWidth=lw;
+  // 선 굵기는 그대로 두되, 밝은 후광(glow)을 깔아 어두운/복잡한 배경에서도 선이 또렷이 뜨게 함
+  const glow=Math.min(6, Math.max(2, Math.round(Math.min(W,H)/500)+lw));
+  ctx.shadowColor='rgba(255,255,255,.95)'; ctx.shadowBlur=glow;
+  const present=new Set();                            // 이 이미지에 실제 그려진 클래스 모음
+  const paths=[];                                     // 색상 선을 후광 위에 다시 그리기 위해 좌표 보관
+  for(const b of boxes){
+    if(state.classOff.has(b.cls)) continue;
+    const col=colorFor(b.cls);
+    ctx.strokeStyle=col;
+    const sx=b.px?1:W, sy=b.px?1:H;   // 픽셀 좌표면 스케일 없이 그대로 사용
+    if(b.type==='box'){
+      const bw=b.w*sx, bh=b.h*sy;
+      const x=Math.round(b.cx*sx-bw/2)+.5, y=Math.round(b.cy*sy-bh/2)+.5;  // 0.5 오프셋으로 선 또렷하게
+      const rw=Math.round(bw), rh=Math.round(bh);
+      ctx.strokeRect(x, y, rw, rh);
+      paths.push({col, rect:[x,y,rw,rh]});
+    } else {
+      const pts=b.pts.map(p=>[p[0]*sx,p[1]*sy]);
+      ctx.beginPath();
+      pts.forEach((p,i)=>{ i?ctx.lineTo(p[0],p[1]):ctx.moveTo(p[0],p[1]); });
+      ctx.closePath(); ctx.stroke();
+      paths.push({col, pts});
+    }
+    present.add(b.cls);
+  }
+  // 후광 없이 색상 선을 한 번 더 덧그려 중심선의 색을 선명하게 유지
+  ctx.shadowBlur=0; ctx.shadowColor='transparent';
+  for(const p of paths){
+    ctx.strokeStyle=p.col;
+    if(p.rect){ ctx.strokeRect(p.rect[0],p.rect[1],p.rect[2],p.rect[3]); }
+    else { ctx.beginPath(); p.pts.forEach((q,i)=>{ i?ctx.lineTo(q[0],q[1]):ctx.moveTo(q[0],q[1]); }); ctx.closePath(); ctx.stroke(); }
+  }
+  // 클래스 이름은 박스마다 반복하지 않고, 이미지에 등장하는 클래스별로 한 번씩 좌상단에 크게 표시
+  if(showNames && present.size) drawClassLegend(ctx, W, H, present);
+  // 오류가 기록된 박스/지점은 번호 배지 + 강조로 구분
+  const errs = opts.base!=null ? (state.errors.get(opts.base)||[]) : [];
+  errs.forEach((e,n)=>{
+    if(e.kind==='box'){ const b=boxes[e.boxIndex]; if(!b || state.classOff.has(b.cls)) return; drawErrBadge(ctx, boxRectPx(b,W,H), n+1, W, H); }
+    else drawPointErr(ctx, e.x*W, e.y*H, n+1, W, H);
+  });
+  // 선택 강조 (라이트박스)
+  const sel=opts.sel;
+  if(sel){
+    if(sel.mode==='box' && boxes[sel.boxIndex]) drawSelHighlight(ctx, boxRectPx(boxes[sel.boxIndex],W,H), W, H);
+    else if(sel.mode==='point') drawPointSel(ctx, sel.x*W, sel.y*H, W, H);
+  }
+}
+
+function drawErrBadge(ctx, r, num, W, H){
+  const u=Math.max(2, Math.min(W,H)/300);
+  const pad=u*1.5;
+  const x0=r.x-pad, y0=r.y-pad, w=r.w+pad*2, h=r.h+pad*2;   // 박스 주위 점선 테두리
+  ctx.save();
+  ctx.setLineDash([u*5, u*3]);
+  ctx.lineWidth=Math.max(2, state.lineW+u); ctx.strokeStyle='#ff2d2d';
+  ctx.strokeRect(x0, y0, w, h);
+  ctx.setLineDash([]);
+  // 번호 배지: 박스를 가리지 않도록 좌상단 '바깥'(위쪽)에 배치
+  const rad=Math.max(11, Math.min(W,H)/40);
+  let bx=x0+rad, by=y0-rad-u;               // 상단 테두리 위, 좌측 정렬
+  bx=Math.min(Math.max(bx,rad), W-rad);
+  by=Math.max(by, rad);                      // 화면 위로 넘치지 않게
+  ctx.beginPath(); ctx.arc(bx,by,rad,0,Math.PI*2);
+  ctx.fillStyle='#ff2d2d'; ctx.fill();
+  ctx.lineWidth=Math.max(1.5, rad*0.12); ctx.strokeStyle='#fff'; ctx.stroke();
+  ctx.fillStyle='#fff'; ctx.font=`700 ${Math.round(rad*1.15)}px sans-serif`;
+  ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.fillText(String(num), bx, by+1);
+  ctx.restore();
+}
+function drawSelHighlight(ctx, r, W, H){
+  const u=Math.max(2, Math.min(W,H)/300);
+  ctx.save();
+  ctx.lineWidth=Math.max(2, state.lineW+u*1.5); ctx.strokeStyle='#ffd400';
+  ctx.strokeRect(r.x-u*2.5, r.y-u*2.5, r.w+u*5, r.h+u*5);
+  ctx.restore();
+}
+// 좌표 지점 오류: 십자 마커 + 번호 배지
+function drawPointErr(ctx, px, py, num, W, H){
+  const u=Math.max(2, Math.min(W,H)/300);
+  const r=Math.max(12, Math.min(W,H)/38);
+  ctx.save();
+  ctx.strokeStyle='#ff2d2d'; ctx.lineWidth=Math.max(2, state.lineW+u);
+  ctx.beginPath();
+  ctx.moveTo(px-r, py); ctx.lineTo(px+r, py);
+  ctx.moveTo(px, py-r); ctx.lineTo(px, py+r);
+  ctx.stroke();
+  const bx=px+r*0.95, by=py-r*0.95, br=r*0.8;
+  ctx.beginPath(); ctx.arc(bx,by,br,0,Math.PI*2);
+  ctx.fillStyle='#ff2d2d'; ctx.fill();
+  ctx.lineWidth=Math.max(1.5, br*0.14); ctx.strokeStyle='#fff'; ctx.stroke();
+  ctx.fillStyle='#fff'; ctx.font=`700 ${Math.round(br*1.15)}px sans-serif`;
+  ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.fillText(String(num), bx, by+1);
+  ctx.restore();
+}
+function drawPointSel(ctx, px, py, W, H){
+  const u=Math.max(2, Math.min(W,H)/300);
+  const r=Math.max(15, Math.min(W,H)/30);
+  ctx.save();
+  ctx.strokeStyle='#ffd400'; ctx.lineWidth=Math.max(2, state.lineW+u*1.5);
+  ctx.beginPath(); ctx.arc(px,py,r,0,Math.PI*2); ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(px-r*1.35,py); ctx.lineTo(px+r*1.35,py);
+  ctx.moveTo(px,py-r*1.35); ctx.lineTo(px,py+r*1.35);
+  ctx.stroke();
+  ctx.restore();
+}
+
+// 이미지 내 등장 클래스를 좌상단에 색상칩+이름으로 한 번씩 표시 (가독성 위해 글씨 크게)
+function drawClassLegend(ctx, W, H, present){
+  const ids=[...present].sort((a,b)=>a-b);
+  const fs=Math.max(9, Math.round(Math.min(W,H)/62*state.labelScale));  // 라벨 글자 크기(배율 조절)
+  const pad=Math.round(fs*0.4), gap=Math.round(fs*0.28);
+  const sw=fs, rowH=fs+gap, x0=pad, y0=pad;
+  ctx.font=`600 ${fs}px sans-serif`;
+  ctx.textBaseline='middle';
+  let boxW=0;
+  const labels=ids.map(id=>{ const nm=state.names[id]!=null?state.names[id]:('class '+id); return id+': '+nm; });
+  labels.forEach(t=>{ boxW=Math.max(boxW, ctx.measureText(t).width); });
+  const panelW=sw+gap+boxW+pad*2, panelH=rowH*ids.length-gap+pad*2;
+  ctx.globalAlpha=.55; ctx.fillStyle='#000';
+  ctx.fillRect(x0, y0, panelW, panelH); ctx.globalAlpha=1;
+  ids.forEach((id,i)=>{
+    const cy=y0+pad+rowH*i+fs/2;
+    ctx.fillStyle=colorFor(id);
+    ctx.fillRect(x0+pad, cy-sw/2, sw, sw);
+    ctx.fillStyle='#fff';
+    ctx.fillText(labels[i], x0+pad+sw+gap, cy+1);
+  });
+}
+
+function loadImg(file){
+  return new Promise((res,rej)=>{
+    const url=URL.createObjectURL(file);
+    const im=new Image();
+    im.onload=()=>{ res({im,url}); };
+    im.onerror=()=>{ URL.revokeObjectURL(url); rej(); };
+    im.src=url;
+  });
+}
+
+let pageUrls=[];
+async function renderPage(){
+  $('welcome').style.display = state.images.size? 'none':'block';
+  pageUrls.forEach(u=>URL.revokeObjectURL(u)); pageUrls=[];
+  const grid=$('grid'); grid.innerHTML='';
+  grid.style.setProperty('--card', $('cardSize').value+'px');
+  const per=+$('perPage').value;
+  const start=state.page*per;
+  const slice=state.items.slice(start, start+per);
+  const showNames=$('showLabels').checked;
+  renderPager();
+  for(const it of slice){
+    const card=document.createElement('div'); card.className='card';
+    const wrap=document.createElement('div'); wrap.className='cvwrap';
+    const cv=document.createElement('canvas'); wrap.appendChild(cv);
+    const cap=document.createElement('div'); cap.className='cap';
+    const ec=(state.errors.get(it.base)||[]).length;
+    cap.innerHTML=`<span class="nm" title="${esc(it.name)}">${highlight(it.name)}</span>`+
+                  `<span class="ct ${it.count?'':'empty'}">${it.count} box${ec?` · <span style="color:#ff6b6b">⚠${ec}</span>`:''}</span>`;
+    card.appendChild(wrap); card.appendChild(cap); grid.appendChild(card);
+    try{
+      const {im,url}=await loadImg(it.file); pageUrls.push(url);
+      drawOnCanvas(cv, im, it.boxes, showNames, {base: it.base});
+    }catch(e){ wrap.innerHTML='<div class="muted" style="padding:20px">이미지 로드 실패</div>'; }
+    wrap.onclick=()=>openLightbox(state.items.indexOf(it));
+  }
+}
+
+function renderPager(){
+  const per=+$('perPage').value;
+  const pages=Math.max(1, Math.ceil(state.items.length/per));
+  if(state.page>=pages) state.page=pages-1;
+  const p=$('pager');
+  if(!state.items.length){ p.innerHTML=''; return; }
+  p.innerHTML='';
+  const mk=(t,fn,dis)=>{const b=document.createElement('button');b.className='btn';b.textContent=t;b.disabled=!!dis;b.onclick=fn;return b;};
+  p.appendChild(mk('« 처음',()=>{state.page=0;renderPage();window.scrollTo(0,0);},state.page===0));
+  p.appendChild(mk('‹ 이전',()=>{state.page--;renderPage();window.scrollTo(0,0);},state.page===0));
+  const info=document.createElement('span'); info.className='pill stat';
+  info.textContent=`${state.page+1} / ${pages}  (${state.items.length}장)`;
+  p.appendChild(info);
+  p.appendChild(mk('다음 ›',()=>{state.page++;renderPage();window.scrollTo(0,0);},state.page>=pages-1));
+  p.appendChild(mk('끝 »',()=>{state.page=pages-1;renderPage();window.scrollTo(0,0);},state.page>=pages-1));
+}
+
+// ---- lightbox ----
+const LOUPE_SIZE=260;            // 돋보기 지름(px)
+let loupeZoom=3;                 // 확대 배율 (+/- 로 조절)
+let lastMouse=null;              // 마지막 마우스 위치(돋보기 갱신용)
+async function openLightbox(idx){
+  if(idx<0) return;
+  state.lbIdx=idx; $('lb').classList.add('on'); lastMouse=null; hideLoupe();
+  onLbImage(); await drawLightbox();
+}
+async function drawLightbox(){
+  const it=state.items[state.lbIdx]; if(!it) return;
+  try{
+    const {im,url}=await loadImg(it.file);
+    drawOnCanvas($('lbcv'), im, it.boxes, $('showLabels').checked,
+                 {base: it.base, sel: (state.selBase===it.base? state.sel : null)});
+    URL.revokeObjectURL(url);
+  }catch(e){}
+  $('lbcap').textContent=`${it.name}  ·  ${it.count} box  ·  ${state.lbIdx+1}/${state.items.length}`;
+  if(lastMouse) drawLoupe();     // 이미지 갱신 시 돋보기도 최신 내용으로
+}
+// 이미지가 바뀌면 선택 초기화하고 오류 패널 갱신
+function onLbImage(){ const it=state.items[state.lbIdx]; state.selBase=it?it.base:null; state.sel=null; renderErrPanel(); }
+function lbStep(d){ const n=state.lbIdx+d; if(n>=0&&n<state.items.length){ state.lbIdx=n; onLbImage(); drawLightbox(); } }
+
+// ---- 박스/좌표 선택 & 오류 체크 ----
+function hitTest(boxes, x, y, W, H){
+  let best=-1, bestArea=Infinity;
+  boxes.forEach((b,i)=>{ if(state.classOff.has(b.cls)) return; const r=boxRectPx(b,W,H);
+    if(x>=r.x && x<=r.x+r.w && y>=r.y && y<=r.y+r.h){ const a=r.w*r.h; if(a<bestArea){bestArea=a;best=i;} } });
+  if(best>=0) return best;
+  // 포함하는 박스가 없으면 가장 가까운 중심(임계값 내)을 선택 — 작은 박스 클릭 보조
+  const th=Math.max(W,H)*0.03; let bd=th*th, bi=-1;
+  boxes.forEach((b,i)=>{ if(state.classOff.has(b.cls)) return; const r=boxRectPx(b,W,H);
+    const cx=r.x+r.w/2, cy=r.y+r.h/2, d=(cx-x)**2+(cy-y)**2; if(d<bd){bd=d;bi=i;} });
+  return bi;
+}
+// 현재 선택에 해당하는 오류 객체(없으면 null)
+function curErr(){
+  const sel=state.sel, arr=state.errors.get(state.selBase); if(!sel||!arr) return null;
+  if(sel.mode==='box') return arr.find(e=>e.kind==='box'&&e.boxIndex===sel.boxIndex)||null;
+  return arr.find(e=>e.kind==='point'&&e.x===sel.x&&e.y===sel.y)||null;
+}
+function ensureArr(base){ let a=state.errors.get(base); if(!a){ a=[]; state.errors.set(base,a); } return a; }
+function selectBox(base, idx){ state.selBase=base; state.sel={mode:'box', boxIndex:idx}; renderErrPanel(); drawLightbox(); }
+function selectPointAt(base, nx, ny){
+  const arr=state.errors.get(base)||[];
+  let best=null, bd=0.03*0.03;   // 근처 기존 지점 오류가 있으면 그것을 선택
+  for(const e of arr){ if(e.kind!=='point') continue; const d=(e.x-nx)**2+(e.y-ny)**2; if(d<bd){ bd=d; best=e; } }
+  state.selBase=base; state.sel = best? {mode:'point', x:best.x, y:best.y} : {mode:'point', x:nx, y:ny};
+  renderErrPanel(); drawLightbox();
+}
+function selectErr(base, idx){
+  const arr=state.errors.get(base), e=arr&&arr[idx]; if(!e) return;
+  state.selBase=base;
+  state.sel = e.kind==='box' ? {mode:'box', boxIndex:e.boxIndex} : {mode:'point', x:e.x, y:e.y};
+  renderErrPanel(); drawLightbox();
+}
+function setError(base, type){
+  const sel=state.sel; if(!sel) return;
+  let e=curErr();
+  if(!e){
+    const arr=ensureArr(base);
+    e = sel.mode==='box' ? {kind:'box', boxIndex:sel.boxIndex, type, note:''} : {kind:'point', x:sel.x, y:sel.y, type, note:''};
+    arr.push(e);
+  } else e.type=type;
+  if(!needsClass(type)) delete e.correct;
+  if(type!=='Consistency') delete e.refs;
+  saveErrors(); renderErrPanel(); drawLightbox();
+}
+function setCorrect(base, clsId){ const e=curErr(); if(!e) return; e.correct=clsId; saveErrors(); renderErrPanel(); drawLightbox(); }
+function toggleRef(base, refBase){
+  const e=curErr(); if(!e) return; if(!e.refs) e.refs=[];
+  const i=e.refs.indexOf(refBase); if(i>=0) e.refs.splice(i,1); else e.refs.push(refBase);
+  saveErrors(); renderErrPanel();
+}
+function updateNote(base, val){ const e=curErr(); if(!e) return; e.note=val; saveErrors(); }
+function clearError(base){
+  const e=curErr(), arr=state.errors.get(base); if(!e||!arr) return;
+  const i=arr.indexOf(e); if(i>=0) arr.splice(i,1);
+  if(!arr.length) state.errors.delete(base);
+  saveErrors(); renderErrPanel(); drawLightbox();
+}
+function clsName(id){ return state.names[id]!=null ? state.names[id] : ('class '+id); }
+// 이웃 이미지 썸네일(박스 포함) 캐시 — 비교 대상 선택 시 이미지를 보며 고를 수 있게
+const thumbCache=new Map();
+async function ensureThumb(base){
+  if(thumbCache.has(base)) return thumbCache.get(base);
+  const meta=state.images.get(base); if(!meta) return null;
+  try{
+    const {im,url}=await loadImg(meta.file);
+    const W=im.naturalWidth, H=im.naturalHeight, s=Math.min(1, 200/W);
+    const w=Math.max(1,Math.round(W*s)), h=Math.max(1,Math.round(H*s));
+    const c=document.createElement('canvas'); c.width=w; c.height=h;
+    const ctx=c.getContext('2d'); ctx.drawImage(im,0,0,w,h);
+    ctx.lineWidth=1;
+    for(const b of (state.parsed.get(base)||[])){ if(state.classOff.has(b.cls)) continue;
+      const r=boxRectPx(b,W,H); ctx.strokeStyle=colorFor(b.cls); ctx.strokeRect(r.x*s, r.y*s, r.w*s, r.h*s); }
+    URL.revokeObjectURL(url);
+    const data=c.toDataURL('image/jpeg',0.7);
+    thumbCache.set(base, data);
+    return data;
+  }catch(e){ return null; }
+}
+function renderErrPanel(){
+  const p=$('errpanel'); if(!p) return;
+  const it=state.items[state.lbIdx];
+  if(!it || !$('lb').classList.contains('on')){ p.style.display='none'; return; }
+  p.style.display='block';
+  const base=it.base;
+  const arr=state.errors.get(base)||[];
+  let html=`<div class="ep-h">Error check <span class="muted">(${arr.length})</span></div>`;
+  const sel = (state.selBase===base) ? state.sel : null;
+  if(!sel){
+    html+=`<div class="ep-hint">Click a box to select it, or <b>double-click a spot</b> to mark a missing object, then choose the error type.</div>`;
+  } else {
+    const e=curErr();
+    let selLabel;
+    if(sel.mode==='box'){ const b=it.boxes[sel.boxIndex]; selLabel=`Box #${sel.boxIndex+1} · <b>${b.cls}: ${esc(clsName(b.cls))}</b>`; }
+    else selLabel=`Point (${Math.round(sel.x*100)}%, ${Math.round(sel.y*100)}%)`;
+    html+=`<div class="ep-sel">Selected: ${selLabel}</div>`;
+    html+=`<div class="ep-types">`+ERR_TYPES.map(t=>`<button class="ep-type${e&&e.type===t?' on':''}" data-t="${esc(t)}">${t}</button>`).join('')+`</div>`;
+    if(e && needsClass(e.type)){   // 정답 클래스 선택
+      const ids=[...new Set([...state.classSet, ...Object.keys(state.names).map(Number)])].sort((a,b)=>a-b);
+      html+=`<div class="ep-corr-label muted">Correct class:</div><div class="ep-types">`+
+        ids.map(id=>`<button class="ep-cls${e.correct===id?' on':''}" data-c="${id}">${id}: ${esc(clsName(id))}</button>`).join('')+`</div>`;
+    }
+    if(e && e.type==='Consistency'){   // 일관성: 앞/뒤 이웃 이미지 중 비교 대상 선택
+      const idx=state.lbIdx, refs=e.refs||[];
+      html+=`<div class="ep-corr-label muted">Compare with (neighbors) — click thumbnail to toggle:</div><div class="ep-refs">`;
+      for(let o=-5;o<=5;o++){ if(o===0) continue; const j=idx+o; if(j<0||j>=state.items.length) continue;
+        const rb=state.items[j].base, on=refs.includes(rb);
+        html+=`<button class="ep-ref${on?' on':''}" data-r="${esc(rb)}" title="${esc(state.items[j].name)}"><img class="ep-thumb" data-tb="${esc(rb)}" alt=""><span class="ep-reflabel">${o<0?'◀':'▶'}${Math.abs(o)}</span></button>`;
+      }
+      html+=`</div>`;
+      if(refs.length) html+=`<div class="ep-refnames muted">↔ ${refs.map(b=>esc(state.images.get(b)?state.images.get(b).name:b)).join('<br>')}</div>`;
+    }
+    html+=`<textarea id="errnote" placeholder="Note (optional)">${e&&e.note?esc(e.note):''}</textarea>`;
+    html+=`<div class="ep-btns"><button id="errClear" class="btn">Delete this error</button></div>`;
+  }
+  if(arr.length){
+    html+=`<div class="ep-list">`+arr.map((e,n)=>{
+      const loc = e.kind==='box' ? `box#${e.boxIndex+1}` : 'point';
+      let corr='';
+      if(needsClass(e.type) && e.correct!=null){
+        const c=`${e.correct}: ${esc(clsName(e.correct))}`;
+        if(e.kind==='box' && it.boxes[e.boxIndex]){ const oc=it.boxes[e.boxIndex].cls; corr=` ${oc}: ${esc(clsName(oc))} → ${c}`; }
+        else corr=` → ${c}`;
+      }
+      const isSel = sel && ((sel.mode==='box'&&e.kind==='box'&&e.boxIndex===sel.boxIndex)||(sel.mode==='point'&&e.kind==='point'&&e.x===sel.x&&e.y===sel.y));
+      return `<div class="ep-item${isSel?' on':''}" data-i="${n}"><b>${cnum(n+1)}</b> <span class="muted">[${loc}]</span> ${esc(e.type||'')}${corr}${e.note?' — '+esc(e.note):''}</div>`;
+    }).join('')+`</div>`;
+  }
+  p.innerHTML=html;
+  p.querySelectorAll('.ep-type').forEach(btn=>btn.onclick=()=>setError(base, btn.dataset.t));
+  p.querySelectorAll('.ep-cls').forEach(btn=>btn.onclick=()=>setCorrect(base, +btn.dataset.c));
+  p.querySelectorAll('.ep-ref').forEach(btn=>btn.onclick=()=>toggleRef(base, btn.dataset.r));
+  p.querySelectorAll('.ep-thumb').forEach(img=>{
+    const b=img.dataset.tb;
+    if(thumbCache.has(b)) img.src=thumbCache.get(b);
+    else ensureThumb(b).then(u=>{ if(u) img.src=u; });
+  });
+  const note=$('errnote'); if(note) note.oninput=()=>updateNote(base, note.value);
+  const clr=$('errClear'); if(clr) clr.onclick=()=>clearError(base);
+  p.querySelectorAll('.ep-item').forEach(el=>el.onclick=()=>selectErr(base, +el.dataset.i));
+}
+
+// ---- 돋보기(loupe) ----
+function hideLoupe(){ $('loupe').classList.remove('on'); }
+function drawLoupe(){
+  if(!lastMouse) return;
+  const cv=$('lbcv'), lp=$('loupe');
+  const r=cv.getBoundingClientRect();
+  const mx=lastMouse.x-r.left, my=lastMouse.y-r.top;      // 표시 좌표
+  if(mx<0||my<0||mx>r.width||my>r.height){ hideLoupe(); return; }
+  const sx=mx*cv.width/r.width, sy=my*cv.height/r.height;  // 원본 픽셀 좌표
+  if(lp.width!==LOUPE_SIZE){ lp.width=lp.height=LOUPE_SIZE; }
+  const g=lp.getContext('2d');
+  const src=LOUPE_SIZE/loupeZoom;                          // 원본에서 잘라올 영역 크기
+  g.clearRect(0,0,LOUPE_SIZE,LOUPE_SIZE);
+  g.imageSmoothingEnabled=false;
+  g.drawImage(cv, sx-src/2, sy-src/2, src, src, 0,0, LOUPE_SIZE, LOUPE_SIZE);
+  // 중심 십자
+  g.strokeStyle='rgba(255,255,255,.5)'; g.lineWidth=1;
+  g.beginPath(); g.moveTo(LOUPE_SIZE/2,LOUPE_SIZE/2-8); g.lineTo(LOUPE_SIZE/2,LOUPE_SIZE/2+8);
+  g.moveTo(LOUPE_SIZE/2-8,LOUPE_SIZE/2); g.lineTo(LOUPE_SIZE/2+8,LOUPE_SIZE/2); g.stroke();
+  // 커서를 따라다니되 화면 밖으로 나가지 않게
+  const stage=$('lbstage').getBoundingClientRect();
+  let lx=lastMouse.x-stage.left-LOUPE_SIZE/2, ly=lastMouse.y-stage.top-LOUPE_SIZE/2;
+  lp.style.left=lx+'px'; lp.style.top=ly+'px';
+  lp.classList.add('on');
+}
+$('lbcv').addEventListener('mousemove',e=>{ lastMouse={x:e.clientX,y:e.clientY}; drawLoupe(); });
+$('lbcv').addEventListener('mouseleave',()=>{ lastMouse=null; hideLoupe(); });
+// 박스 클릭 → 선택 (오류 체크)
+$('lbcv').addEventListener('click',e=>{
+  const it=state.items[state.lbIdx]; if(!it) return;
+  const cv=$('lbcv'), r=cv.getBoundingClientRect();
+  const x=(e.clientX-r.left)*cv.width/r.width, y=(e.clientY-r.top)*cv.height/r.height;
+  const idx=hitTest(it.boxes, x, y, cv.width, cv.height);
+  if(idx>=0) selectBox(it.base, idx);
+});
+// 빈 곳(원하는 위치) 더블클릭 → 그 좌표에 지점 오류 마킹
+$('lbcv').addEventListener('dblclick',e=>{
+  const it=state.items[state.lbIdx]; if(!it) return;
+  const cv=$('lbcv'), r=cv.getBoundingClientRect();
+  const nx=(e.clientX-r.left)/r.width, ny=(e.clientY-r.top)/r.height;
+  if(nx<0||ny<0||nx>1||ny>1) return;
+  selectPointAt(it.base, nx, ny);
+});
+
+function closeLightbox(){ $('lb').classList.remove('on'); hideLoupe(); renderErrPanel(); renderPage(); }
+$('lb').querySelector('.close').onclick=closeLightbox;
+$('lb').querySelector('.prev').onclick=()=>lbStep(-1);
+$('lb').querySelector('.next').onclick=()=>lbStep(1);
+$('lb').onclick=e=>{ if(e.target.id==='lb') closeLightbox(); };
+
+// 박스/라벨을 그리드·라이트박스 모두에 다시 반영
+function redrawAll(){ renderPage(); if($('lb').classList.contains('on')) drawLightbox(); }
+
+document.addEventListener('keydown',e=>{
+  const t=e.target;
+  if(t && (t.tagName==='INPUT'||t.tagName==='TEXTAREA'||t.tagName==='SELECT')) return;
+  const lbOn=$('lb').classList.contains('on');
+  // 레이아웃 무관하게 물리 키로 인식 (한글 IME에서도 동작)
+  // H : 박스 + 클래스명 한 번에 켜고/끄기
+  if(e.code==='KeyH'){
+    const on=!$('showBoxes').checked;
+    $('showBoxes').checked=on; $('showLabels').checked=on; state.showBoxes=on;
+    redrawAll(); e.preventDefault(); return;
+  }
+  // D / F : 이전 / 다음 이미지 (라이트박스에서만)
+  if(lbOn && e.code==='KeyD'){ lbStep(-1); e.preventDefault(); return; }
+  if(lbOn && e.code==='KeyF'){ lbStep(1);  e.preventDefault(); return; }
+  if(!lbOn) return;
+  if(e.key==='Escape'){ closeLightbox(); }
+  else if(e.key==='ArrowLeft') lbStep(-1);
+  else if(e.key==='ArrowRight') lbStep(1);
+  else if(e.key==='+'||e.key==='='){ loupeZoom=Math.min(12,loupeZoom+1); drawLoupe(); e.preventDefault(); }
+  else if(e.key==='-'||e.key==='_'){ loupeZoom=Math.max(2,loupeZoom-1); drawLoupe(); e.preventDefault(); }
+});
+
+// ================= PPTX 내보내기 =================
+// 외부 라이브러리 없이 동작하도록 순수 JS로 ZIP(무압축) + 최소 OOXML 생성
+const _enc = s => new TextEncoder().encode(s);
+function crc32(buf){
+  let c=~0>>>0;
+  for(let i=0;i<buf.length;i++){ c ^= buf[i]; for(let k=0;k<8;k++) c = (c>>>1) ^ (0xEDB88320 & -(c&1)); }
+  return (~c)>>>0;
+}
+function zipStore(entries){   // entries: [{name, data:Uint8Array}] → Blob (method 0, 무압축)
+  const parts=[], central=[]; let offset=0;
+  for(const e of entries){
+    const nameB=_enc(e.name), crc=crc32(e.data), size=e.data.length;
+    const lh=new Uint8Array(30+nameB.length), dv=new DataView(lh.buffer);
+    dv.setUint32(0,0x04034b50,true); dv.setUint16(4,20,true); dv.setUint16(6,0,true); dv.setUint16(8,0,true);
+    dv.setUint16(10,0,true); dv.setUint16(12,0,true); dv.setUint32(14,crc,true);
+    dv.setUint32(18,size,true); dv.setUint32(22,size,true);
+    dv.setUint16(26,nameB.length,true); dv.setUint16(28,0,true); lh.set(nameB,30);
+    parts.push(lh, e.data);
+    const cd=new Uint8Array(46+nameB.length), cv=new DataView(cd.buffer);
+    cv.setUint32(0,0x02014b50,true); cv.setUint16(4,20,true); cv.setUint16(6,20,true);
+    cv.setUint16(8,0,true); cv.setUint16(10,0,true); cv.setUint16(12,0,true); cv.setUint16(14,0,true);
+    cv.setUint32(16,crc,true); cv.setUint32(20,size,true); cv.setUint32(24,size,true);
+    cv.setUint16(28,nameB.length,true); cv.setUint32(42,offset,true); cd.set(nameB,46);
+    central.push(cd);
+    offset += lh.length + e.data.length;
+  }
+  let cdSize=0; central.forEach(c=>cdSize+=c.length);
+  const end=new Uint8Array(22), ev=new DataView(end.buffer);
+  ev.setUint32(0,0x06054b50,true); ev.setUint16(8,entries.length,true); ev.setUint16(10,entries.length,true);
+  ev.setUint32(12,cdSize,true); ev.setUint32(16,offset,true);
+  return new Blob([...parts,...central,end], {type:'application/vnd.openxmlformats-officedocument.presentationml.presentation'});
+}
+
+const PPTX_NS = {
+  a:'http://schemas.openxmlformats.org/drawingml/2006/main',
+  r:'http://schemas.openxmlformats.org/officeDocument/2006/relationships',
+  p:'http://schemas.openxmlformats.org/presentationml/2006/main'
+};
+const SLIDE_W=12192000, SLIDE_H=6858000;   // 16:9 (EMU)
+
+function pptxTheme(){
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<a:theme xmlns:a="${PPTX_NS.a}" name="Office"><a:themeElements><a:clrScheme name="Office"><a:dk1><a:sysClr val="windowText" lastClr="000000"/></a:dk1><a:lt1><a:sysClr val="window" lastClr="FFFFFF"/></a:lt1><a:dk2><a:srgbClr val="44546A"/></a:dk2><a:lt2><a:srgbClr val="E7E6E6"/></a:lt2><a:accent1><a:srgbClr val="4472C4"/></a:accent1><a:accent2><a:srgbClr val="ED7D31"/></a:accent2><a:accent3><a:srgbClr val="A5A5A5"/></a:accent3><a:accent4><a:srgbClr val="FFC000"/></a:accent4><a:accent5><a:srgbClr val="5B9BD5"/></a:accent5><a:accent6><a:srgbClr val="70AD47"/></a:accent6><a:hlink><a:srgbClr val="0563C1"/></a:hlink><a:folHlink><a:srgbClr val="954F72"/></a:folHlink></a:clrScheme><a:fontScheme name="Office"><a:majorFont><a:latin typeface="Calibri Light"/><a:ea typeface=""/><a:cs typeface=""/></a:majorFont><a:minorFont><a:latin typeface="Calibri"/><a:ea typeface=""/><a:cs typeface=""/></a:minorFont></a:fontScheme><a:fmtScheme name="Office"><a:fillStyleLst><a:solidFill><a:schemeClr val="phClr"/></a:solidFill><a:solidFill><a:schemeClr val="phClr"/></a:solidFill><a:solidFill><a:schemeClr val="phClr"/></a:solidFill></a:fillStyleLst><a:lnStyleLst><a:ln w="6350" cap="flat" cmpd="sng" algn="ctr"><a:solidFill><a:schemeClr val="phClr"/></a:solidFill><a:prstDash val="solid"/></a:ln><a:ln w="12700" cap="flat" cmpd="sng" algn="ctr"><a:solidFill><a:schemeClr val="phClr"/></a:solidFill><a:prstDash val="solid"/></a:ln><a:ln w="19050" cap="flat" cmpd="sng" algn="ctr"><a:solidFill><a:schemeClr val="phClr"/></a:solidFill><a:prstDash val="solid"/></a:ln></a:lnStyleLst><a:effectStyleLst><a:effectStyle><a:effectLst/></a:effectStyle><a:effectStyle><a:effectLst/></a:effectStyle><a:effectStyle><a:effectLst/></a:effectStyle></a:effectStyleLst><a:bgFillStyleLst><a:solidFill><a:schemeClr val="phClr"/></a:solidFill><a:solidFill><a:schemeClr val="phClr"/></a:solidFill><a:solidFill><a:schemeClr val="phClr"/></a:solidFill></a:bgFillStyleLst></a:fmtScheme></a:themeElements></a:theme>`;
+}
+function pptxMaster(){
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<p:sldMaster xmlns:a="${PPTX_NS.a}" xmlns:r="${PPTX_NS.r}" xmlns:p="${PPTX_NS.p}"><p:cSld><p:bg><p:bgRef idx="1001"><a:schemeClr val="bg1"/></p:bgRef></p:bg><p:spTree><p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/><a:chOff x="0" y="0"/><a:chExt cx="0" cy="0"/></a:xfrm></p:grpSpPr></p:spTree></p:cSld><p:clrMap bg1="lt1" tx1="dk1" bg2="lt2" tx2="dk2" accent1="accent1" accent2="accent2" accent3="accent3" accent4="accent4" accent5="accent5" accent6="accent6" hlink="hlink" folHlink="folHlink"/><p:sldLayoutIdLst><p:sldLayoutId id="2147483649" r:id="rId1"/></p:sldLayoutIdLst><p:txStyles><p:titleStyle/><p:bodyStyle/><p:otherStyle/></p:txStyles></p:sldMaster>`;
+}
+function pptxLayout(){
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<p:sldLayout xmlns:a="${PPTX_NS.a}" xmlns:r="${PPTX_NS.r}" xmlns:p="${PPTX_NS.p}" type="blank" preserve="1"><p:cSld name="Blank"><p:spTree><p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/><a:chOff x="0" y="0"/><a:chExt cx="0" cy="0"/></a:xfrm></p:grpSpPr></p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sldLayout>`;
+}
+// pics: [{rid,w,h}] (index 0 = 현재 이미지). 2장 이상이면 좌측 영역에 격자 배치(일관성 비교)
+function pptxSlide(pics, name, errList, boxes){
+  const M=228600, textW=3400000;
+  const areaW=SLIDE_W-textW-M*3, areaH=SLIDE_H-M*2, areaX=M, areaY=M;
+  const n=pics.length;
+  const cols = n<=1?1 : (n<=2?2 : (n<=6?3 : 3));
+  const rows = Math.ceil(n/cols);
+  const cellW=(areaW - M*(cols-1))/cols, cellH=(areaH - M*(rows-1))/rows;
+  let picsXml='';
+  pics.forEach((im,idx)=>{
+    const gx=idx%cols, gy=Math.floor(idx/cols);
+    const cellX=areaX+gx*(cellW+M), cellY=areaY+gy*(cellH+M);
+    const s=Math.min(cellW/im.w, cellH/im.h);
+    const dw=Math.round(im.w*s), dh=Math.round(im.h*s);
+    const dx=Math.round(cellX+(cellW-dw)/2), dy=Math.round(cellY+(cellH-dh)/2);
+    picsXml+=`<p:pic><p:nvPicPr><p:cNvPr id="${idx+2}" name="image${idx+1}"/><p:cNvPicPr><a:picLocks noChangeAspect="1"/></p:cNvPicPr><p:nvPr/></p:nvPicPr><p:blipFill><a:blip r:embed="${im.rid}"/><a:stretch><a:fillRect/></a:stretch></p:blipFill><p:spPr><a:xfrm><a:off x="${dx}" y="${dy}"/><a:ext cx="${dw}" cy="${dh}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr></p:pic>`;
+  });
+  const tx=areaX+areaW+M, ty=M, th=SLIDE_H-M*2, textId=n+2;
+  const para=(txt,sz,b)=>`<a:p><a:pPr><a:buNone/></a:pPr><a:r><a:rPr lang="en-US" sz="${sz}"${b?' b="1"':''}/><a:t>${xmlEsc(txt)}</a:t></a:r></a:p>`;
+  let paras=para(name,1300,1)+para(errList.length+' error(s)',1050);
+  errList.forEach((e,i)=>{
+    const loc = e.kind==='point' ? ' [point]' : ` [box#${e.boxIndex+1}]`;
+    let head=cnum(i+1)+' '+(e.type||'')+loc;
+    if(needsClass(e.type) && e.correct!=null){
+      const corrStr=e.correct+': '+clsName(e.correct);
+      if(e.kind==='box' && boxes && boxes[e.boxIndex]){   // 박스: 원래 클래스 → 정답 클래스
+        const oc=boxes[e.boxIndex].cls;
+        head+='  '+oc+': '+clsName(oc)+'  →  '+corrStr;
+      } else head+='  →  '+corrStr;                       // 지점: 정답 클래스만
+    }
+    paras+=para(head,1200,1);
+    if(e.note&&e.note.trim()) paras+=para(e.note,1000);
+    if(e.type==='Consistency' && Array.isArray(e.refs) && e.refs.length){   // 비교 대상 파일명
+      const names=e.refs.map(b=>state.images.get(b)?state.images.get(b).name:b);
+      paras+=para('↔ compared with: '+names.join(', '),950);
+    }
+  });
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<p:sld xmlns:a="${PPTX_NS.a}" xmlns:r="${PPTX_NS.r}" xmlns:p="${PPTX_NS.p}"><p:cSld><p:spTree><p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/><a:chOff x="0" y="0"/><a:chExt cx="0" cy="0"/></a:xfrm></p:grpSpPr>${picsXml}<p:sp><p:nvSpPr><p:cNvPr id="${textId}" name="text"/><p:cNvSpPr txBox="1"/><p:nvPr/></p:nvSpPr><p:spPr><a:xfrm><a:off x="${tx}" y="${ty}"/><a:ext cx="${textW}" cy="${th}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr><p:txBody><a:bodyPr wrap="square" rtlCol="0"><a:normAutofit/></a:bodyPr><a:lstStyle/>${paras}</p:txBody></p:sp></p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sld>`;
+}
+// 비교 이미지에 파일명 배너(+현재 이미지 강조 테두리)를 캔버스에 그림
+function labelCanvas(cv, text, isCurrent){
+  const ctx=cv.getContext('2d'), W=cv.width, H=cv.height;
+  const fs=Math.max(14, Math.round(Math.min(W,H)/24));
+  ctx.save();
+  ctx.font=`700 ${fs}px sans-serif`; ctx.textBaseline='top';
+  const label=(isCurrent?'▶ ':'')+text;
+  const tw=ctx.measureText(label).width;
+  ctx.fillStyle = isCurrent? 'rgba(31,58,147,.92)' : 'rgba(0,0,0,.72)';
+  ctx.fillRect(0,0, Math.min(W, tw+16), fs+10);
+  ctx.fillStyle='#fff'; ctx.fillText(label, 8, 5);
+  if(isCurrent){ const lw=Math.max(4, Math.min(W,H)/100); ctx.strokeStyle='#ffd400'; ctx.lineWidth=lw; ctx.strokeRect(lw/2, lw/2, W-lw, H-lw); }
+  ctx.restore();
+}
+
+async function exportPptx(){
+  const bases=[...state.errors.keys()].filter(b=>{ const a=state.errors.get(b); return a&&a.length&&state.images.has(b); });
+  if(!bases.length){ alert('오류가 기록된 이미지가 없습니다.\n라이트박스에서 박스를 클릭하거나 빈 곳을 더블클릭해 오류를 지정하세요.'); return; }
+  bases.sort((a,b)=>state.images.get(a).name.localeCompare(state.images.get(b).name));
+  const btn=$('exportPptx'), old=btn.textContent; btn.disabled=true;
+
+  // 한 이미지를 오류 표시와 함께 렌더 → JPEG 바이트
+  async function renderImg(ib, withBanner, isCurrent){
+    const meta=state.images.get(ib); const cv=document.createElement('canvas');
+    const {im,url}=await loadImg(meta.file);
+    drawOnCanvas(cv, im, state.parsed.get(ib)||[], true, {base:ib, forceBoxes:true, sel:null});
+    URL.revokeObjectURL(url);
+    if(withBanner) labelCanvas(cv, meta.name, isCurrent);
+    const blob=await new Promise(r=>cv.toBlob(r,'image/jpeg',0.85));
+    return {bytes:new Uint8Array(await blob.arrayBuffer()), w:cv.width, h:cv.height};
+  }
+
+  const slides=[]; const media=[]; let mediaN=0;
+  for(let i=0;i<bases.length;i++){
+    const base=bases[i], errList=state.errors.get(base)||[];
+    btn.textContent=`내보내는 중… ${i+1}/${bases.length}`;
+    // Consistency 오류의 비교 대상 이미지(앞뒤) 모으기
+    const refSet=new Set();
+    for(const e of errList) if(e.type==='Consistency' && Array.isArray(e.refs))
+      for(const rb of e.refs) if(rb!==base && state.images.has(rb)) refSet.add(rb);
+    const involved=[base, ...refSet].slice(0,9);   // 현재 + 비교 대상 (최대 9)
+    const multi=involved.length>1;
+    const pics=[], rels=[];
+    for(let k=0;k<involved.length;k++){
+      let r; try{ r=await renderImg(involved[k], multi, involved[k]===base); }catch(e){ continue; }
+      mediaN++;
+      media.push({name:`ppt/media/image${mediaN}.jpeg`, data:r.bytes});
+      const rid='rId'+(k+2);
+      rels.push({rid, target:`../media/image${mediaN}.jpeg`});
+      pics.push({rid, w:r.w, h:r.h});
+    }
+    if(!pics.length) continue;
+    slides.push({ xml: pptxSlide(pics, state.images.get(base).name, errList, state.parsed.get(base)||[]), rels });
+  }
+
+  // 관계/컨텐츠타입/프레젠테이션 조립
+  const n=slides.length;
+  let ct=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Default Extension="jpeg" ContentType="image/jpeg"/><Override PartName="/ppt/presentation.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml"/><Override PartName="/ppt/slideMasters/slideMaster1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slideMaster+xml"/><Override PartName="/ppt/slideLayouts/slideLayout1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slideLayout+xml"/><Override PartName="/ppt/theme/theme1.xml" ContentType="application/vnd.openxmlformats-officedocument.theme+xml"/>`;
+  for(let i=1;i<=n;i++) ct+=`<Override PartName="/ppt/slides/slide${i}.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slide+xml"/>`;
+  ct+=`</Types>`;
+
+  const RT='http://schemas.openxmlformats.org/officeDocument/2006/relationships';
+  const rootRels=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="${RT}/officeDocument" Target="ppt/presentation.xml"/></Relationships>`;
+
+  let presRels=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="${RT}/slideMaster" Target="slideMasters/slideMaster1.xml"/>`;
+  let sldIds='';
+  for(let i=0;i<n;i++){ const rid='rId'+(i+2); presRels+=`<Relationship Id="${rid}" Type="${RT}/slide" Target="slides/slide${i+1}.xml"/>`; sldIds+=`<p:sldId id="${256+i}" r:id="${rid}"/>`; }
+  presRels+=`</Relationships>`;
+
+  const presentation=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<p:presentation xmlns:a="${PPTX_NS.a}" xmlns:r="${PPTX_NS.r}" xmlns:p="${PPTX_NS.p}"><p:sldMasterIdLst><p:sldMasterId id="2147483648" r:id="rId1"/></p:sldMasterIdLst><p:sldIdLst>${sldIds}</p:sldIdLst><p:sldSz cx="${SLIDE_W}" cy="${SLIDE_H}"/><p:notesSz cx="6858000" cy="9144000"/></p:presentation>`;
+
+  const masterRels=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="${RT}/slideLayout" Target="../slideLayouts/slideLayout1.xml"/><Relationship Id="rId2" Type="${RT}/theme" Target="../theme/theme1.xml"/></Relationships>`;
+  const layoutRels=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="${RT}/slideMaster" Target="../slideMasters/slideMaster1.xml"/></Relationships>`;
+
+  const entries=[
+    {name:'[Content_Types].xml', data:_enc(ct)},
+    {name:'_rels/.rels', data:_enc(rootRels)},
+    {name:'ppt/presentation.xml', data:_enc(presentation)},
+    {name:'ppt/_rels/presentation.xml.rels', data:_enc(presRels)},
+    {name:'ppt/slideMasters/slideMaster1.xml', data:_enc(pptxMaster())},
+    {name:'ppt/slideMasters/_rels/slideMaster1.xml.rels', data:_enc(masterRels)},
+    {name:'ppt/slideLayouts/slideLayout1.xml', data:_enc(pptxLayout())},
+    {name:'ppt/slideLayouts/_rels/slideLayout1.xml.rels', data:_enc(layoutRels)},
+    {name:'ppt/theme/theme1.xml', data:_enc(pptxTheme())}
+  ];
+  for(let i=0;i<n;i++){
+    entries.push({name:`ppt/slides/slide${i+1}.xml`, data:_enc(slides[i].xml)});
+    let relsXml=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="${RT}/slideLayout" Target="../slideLayouts/slideLayout1.xml"/>`;
+    for(const r of slides[i].rels) relsXml+=`<Relationship Id="${r.rid}" Type="${RT}/image" Target="${r.target}"/>`;
+    relsXml+=`</Relationships>`;
+    entries.push({name:`ppt/slides/_rels/slide${i+1}.xml.rels`, data:_enc(relsXml)});
+  }
+  media.forEach(m=>entries.push(m));
+
+  const blob=zipStore(entries);
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a'); a.href=url; a.download='YOLO_오류리포트.pptx';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url), 2000);
+  btn.disabled=false; btn.textContent=old;
+  alert(`오류 이미지 ${n}장을 PPTX로 내보냈습니다.`);
+}
+
+// ---- controls ----
+['fMode','fSort','fErr'].forEach(id=>$(id).addEventListener('change',()=>{applyFilterSort();state.page=0;renderPage();}));
+$('perPage').addEventListener('change',()=>{state.page=0;renderPage();});
+// 오류 전체 삭제
+$('clearErrors').addEventListener('click',()=>{
+  const total=[...state.errors.values()].reduce((s,a)=>s+(a?a.length:0),0);
+  if(!total){ alert('삭제할 오류가 없습니다.'); return; }
+  if(!confirm(`기록된 모든 오류 ${total}건을 삭제할까요?\n되돌릴 수 없습니다.`)) return;
+  state.errors.clear(); saveErrors();
+  state.selBase=null; state.sel=null;
+  applyFilterSort(); state.page=0; renderPage();
+  if($('lb').classList.contains('on')){ renderErrPanel(); drawLightbox(); }
+});
+$('cardSize').addEventListener('input',()=>{$('grid').style.setProperty('--card',$('cardSize').value+'px');});
+$('showBoxes').addEventListener('change',e=>{ state.showBoxes=e.target.checked; redrawAll(); });
+$('showLabels').addEventListener('change',redrawAll);
+// 선 굵기 / 라벨 크기 슬라이더 — 그리드 다시 그리기는 드래그 중 과부하 방지를 위해 디바운스
+let styleTimer;
+function applyStyle(){ if($('lb').classList.contains('on')) drawLightbox(); clearTimeout(styleTimer); styleTimer=setTimeout(renderPage,120); }
+$('lineW').addEventListener('input',e=>{ state.lineW=+e.target.value; applyStyle(); });
+$('labelSize').addEventListener('input',e=>{ state.labelScale=+e.target.value; applyStyle(); });
+$('exportPptx').addEventListener('click',exportPptx);
+// 이미지 이름 검색 — 입력이 멈춘 뒤 그리도록 디바운스
+let qTimer;
+$('q').addEventListener('input',()=>{
+  clearTimeout(qTimer);
+  qTimer=setTimeout(()=>{applyFilterSort();state.page=0;renderPage();},180);
+});
+$('q').addEventListener('keydown',e=>{ if(e.key==='Escape'){ $('q').value=''; $('q').dispatchEvent(new Event('input')); }});
+
+// 저장된 오류 기록 불러오기 + 시작 시 기본 클래스 이름을 범례에 표시
+state.errors = loadErrors();
+buildLegend();
+</script>
+</body>
+</html>
