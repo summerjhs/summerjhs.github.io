@@ -109,7 +109,7 @@ body{
 .iconbtn:disabled{opacity:.4;cursor:not-allowed}
 .stage{flex:1;position:relative;overflow:hidden;min-height:0}
 .canvas-wrap{position:absolute;inset:0;display:grid;place-items:center;overflow:auto}
-#imgCanvas{display:block;background:#1b2330;box-shadow:0 4px 24px rgba(18,28,46,.2)}
+#imgCanvas{display:none;background:#1b2330;box-shadow:0 4px 24px rgba(18,28,46,.2)}
 .empty{
   position:absolute;inset:0;display:grid;place-items:center;text-align:center;
   color:var(--muted);padding:40px;
@@ -439,6 +439,7 @@ async function select(i){
   // 이미지 로드
   if(curUrl){ URL.revokeObjectURL(curUrl); curUrl=null; }
   document.getElementById('empty').style.display='none';
+  document.getElementById('imgCanvas').style.display='block';
   if(e.imgFile){
     curUrl=URL.createObjectURL(e.imgFile);
     curImg=new Image();
