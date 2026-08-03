@@ -274,18 +274,21 @@ footer{
       <div class="card-icon">&#9634;</div>
       <h2>VIN 각자코드 검수툴</h2>
     </div>
-    <p class="card-desc">VIN 각자코드 검수를 위한 두 가지 도구.</p>
+    <p class="card-desc">VIN 각자코드 검수를 위한 세 가지 도구.</p>
     <ul class="tools">
+      <li><b>XML Viewer</b> — 이미지 폴더와 PASCAL VOC XML 폴더를 파일명으로 매칭해 bbox·라벨을 미리보기하고, 작업 불가 이미지를 xlsx로 추출.</li>
       <li><b>Label Editor</b> — 이미지 위에 bbox를 그리고 카테고리/속성을 편집하는 COCO JSON 라벨링 에디터.</li>
       <li><b>Crop Review</b> — 바운딩박스 크롭 이미지를 라벨값끼리 모아 검수, 교정 JSON·문제 dataID CSV 내보내기.</li>
     </ul>
     <div class="card-tags">
       <span class="tag">VIN</span>
+      <span class="tag">VOC XML</span>
       <span class="tag">BBox</span>
       <span class="tag">Crop</span>
       <span class="tag">Review</span>
     </div>
     <div class="card-links">
+      <a href="./voc-xml-viewer/">XML Viewer</a>
       <a href="./vin-label-editor/">Label Editor</a>
       <a href="./vin-label-editor/crop-review.html">Crop Review</a>
     </div>
@@ -333,27 +336,6 @@ footer{
       <a href="./coco-review/">Review Tool</a>
       <a href="./coco-reviewer/">Reviewer v2</a>
       <a href="./annotation-compare/">Compare</a>
-    </div>
-  </article>
-
-  <article class="card">
-    <div class="card-head">
-      <div class="card-icon">&#128450;</div>
-      <h2>VOC XML Viewer</h2>
-    </div>
-    <p class="card-desc">이미지 폴더와 PASCAL VOC XML 폴더를 파일명으로 자동 매칭해 바운딩박스·라벨을 미리보기하고 검수합니다.</p>
-    <ul class="tools">
-      <li><b>미리보기</b> — 이미지 위에 bbox와 라벨값을 오버레이, 객체 목록·좌표 확인, 박스/라벨 토글·확대축소.</li>
-      <li><b>작업 불가 체크</b> — 이슈 이미지를 작업 불가로 표시하고 사유 기록, 해당 리스트를 xlsx로 추출.</li>
-    </ul>
-    <div class="card-tags">
-      <span class="tag">VOC XML</span>
-      <span class="tag">BBox</span>
-      <span class="tag">Preview</span>
-      <span class="tag">Export XLSX</span>
-    </div>
-    <div class="card-links">
-      <a href="./voc-xml-viewer/">Open</a>
     </div>
   </article>
 
