@@ -503,8 +503,16 @@ function drawOnCanvas(canvas, img, boxes, showNames, opts){
     if(p.rect){ ctx.strokeRect(p.rect[0],p.rect[1],p.rect[2],p.rect[3]); }
     else { ctx.beginPath(); p.pts.forEach((q,i)=>{ i?ctx.lineTo(q[0],q[1]):ctx.moveTo(q[0],q[1]); }); ctx.closePath(); ctx.stroke(); }
   }
-  // 클래스 이름은 박스마다 반복하지 않고, 이미지에 등장하는 클래스별로 한 번씩 좌상단에 크게 표시
-  if(showNames && present.size) drawClassLegend(ctx, W, H, present);
+  // 클래스 이름: 클래스별로 '첫 번째' 박스 위(바깥)에 한 번씩만 표시 (같은 클래스 여러 개여도 1회)
+  if(showNames && present.size){
+    const labeled=new Set();
+    for(const b of boxes){
+      if(state.classOff.has(b.cls) || labeled.has(b.cls)) continue;
+      labeled.add(b.cls);
+      const nm = state.names[b.cls]!=null ? (b.cls+': '+state.names[b.cls]) : ('class '+b.cls);
+      drawClassLabel(ctx, boxRectPx(b,W,H), nm, b.cls, W, H);
+    }
+  }
   // 오류가 기록된 박스/지점은 번호 배지 + 강조로 구분
   const errs = opts.base!=null ? (state.errors.get(opts.base)||[]) : [];
   errs.forEach((e,n)=>{
@@ -580,27 +588,36 @@ function drawPointSel(ctx, px, py, W, H){
   ctx.restore();
 }
 
-// 이미지 내 등장 클래스를 좌상단에 색상칩+이름으로 한 번씩 표시 (가독성 위해 글씨 크게)
-function drawClassLegend(ctx, W, H, present){
-  const ids=[...present].sort((a,b)=>a-b);
-  const fs=Math.max(9, Math.round(Math.min(W,H)/62*state.labelScale));  // 라벨 글자 크기(배율 조절)
-  const pad=Math.round(fs*0.4), gap=Math.round(fs*0.28);
-  const sw=fs, rowH=fs+gap, x0=pad, y0=pad;
-  ctx.font=`600 ${fs}px sans-serif`;
-  ctx.textBaseline='middle';
-  let boxW=0;
-  const labels=ids.map(id=>{ const nm=state.names[id]!=null?state.names[id]:('class '+id); return id+': '+nm; });
-  labels.forEach(t=>{ boxW=Math.max(boxW, ctx.measureText(t).width); });
-  const panelW=sw+gap+boxW+pad*2, panelH=rowH*ids.length-gap+pad*2;
-  ctx.globalAlpha=.55; ctx.fillStyle='#000';
-  ctx.fillRect(x0, y0, panelW, panelH); ctx.globalAlpha=1;
-  ids.forEach((id,i)=>{
-    const cy=y0+pad+rowH*i+fs/2;
-    ctx.fillStyle=colorFor(id);
-    ctx.fillRect(x0+pad, cy-sw/2, sw, sw);
-    ctx.fillStyle='#fff';
-    ctx.fillText(labels[i], x0+pad+sw+gap, cy+1);
-  });
+// 클래스 색 배경 위에 올릴 글자색(명도 기준 흑/백) — 클래스별 1회 계산 후 캐시
+const _txtColCache=new Map();
+function labelTextColor(id){
+  if(_txtColCache.has(id)) return _txtColCache.get(id);
+  let col='#fff';
+  try{
+    const c=document.createElement('canvas'); c.width=c.height=1;
+    const x=c.getContext('2d'); x.fillStyle=colorFor(id); x.fillRect(0,0,1,1);
+    const d=x.getImageData(0,0,1,1).data;
+    col=(0.299*d[0]+0.587*d[1]+0.114*d[2])>150 ? '#111827' : '#ffffff';
+  }catch(e){}
+  _txtColCache.set(id, col); return col;
+}
+// 클래스 이름을 해당 박스 '위쪽 바깥'(좌측 정렬)에 칩으로 표시 → 박스 내부를 가리지 않음
+function drawClassLabel(ctx, r, text, id, W, H){
+  const fs=Math.max(10, Math.round(Math.min(W,H)/55*state.labelScale));
+  const padX=Math.max(3, Math.round(fs*0.35)), padY=Math.max(2, Math.round(fs*0.18));
+  ctx.save();
+  ctx.font=`600 ${fs}px sans-serif`; ctx.textBaseline='top';
+  const tw=ctx.measureText(text).width;
+  const bw=tw+padX*2, bh=fs+padY*2;
+  let x=Math.round(r.x);
+  let y=Math.round(r.y)-bh-Math.max(2, Math.round(fs*0.18));   // 박스 상단 위(바깥)
+  if(y<0) y=Math.round(r.y+r.h)+Math.max(2, Math.round(fs*0.18));  // 위 공간 없으면 아래에
+  x=Math.min(Math.max(0,x), Math.max(0,W-bw));                  // 좌우 화면 밖 방지
+  ctx.globalAlpha=.9; ctx.fillStyle=colorFor(id);
+  ctx.fillRect(x, y, bw, bh); ctx.globalAlpha=1;
+  ctx.fillStyle=labelTextColor(id);
+  ctx.fillText(text, x+padX, y+padY);
+  ctx.restore();
 }
 
 function loadImg(file){
