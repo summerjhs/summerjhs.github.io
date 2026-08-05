@@ -116,6 +116,7 @@ body { background: var(--bg); color: var(--ink); font-family: 'Segoe UI', sans-s
         <div class="search-box">
             <input type="text" id="searchInput" placeholder="검색 (파일명 / dataID)">
             <button class="btn btn-toggle" id="btnProblemOnly" onclick="toggleProblemOnly()">문제만</button>
+            <button class="btn btn-toggle" id="btnEdgeOnly" onclick="toggleEdgeOnly()" title="바운딩박스가 이미지 외곽선에 닿는 프레임만 보기">&#128306; 외곽선</button>
         </div>
         <div class="file-list" id="fileList"></div>
         <div class="counter" id="counter">0 / 0</div>
@@ -171,6 +172,9 @@ let currentImage = null;
 let viewMode = 'all';
 let problemOnly = false;
 let fitToBoxes = true;   // 박스 영역만 확대 표시 (기본 ON)
+let edgeOnly = false;    // 외곽선 접촉 프레임만 보기
+let edgeScanToken = 0;   // 외곽선 스캔 취소용 토큰
+const EDGE_TOL = 1;      // 외곽선 접촉 판정 허용오차(px)
 
 let loadedImages = {};    // { filename: File }
 let loadedRecords = [];   // [ record ]
@@ -251,6 +255,7 @@ function parseBoxes(record, nameKey) {
             modified: false,
             flagged: false,
             flagReason: '',
+            edge: false,
         });
     });
     boxes.sort((a, b) => a.xmin - b.xmin);
@@ -282,6 +287,7 @@ function rebuildEntries() {
             unableReason: '',
             hasRecord: true,
             hasImage: !!img,
+            imgW: null, imgH: null, edgeTouch: false,
         });
     });
 
@@ -293,6 +299,7 @@ function rebuildEntries() {
             boxes: [], dirty: false, frameFlag: false, frameReason: '',
             unableToWork: false, unableReason: '',
             hasRecord: false, hasImage: true,
+            imgW: null, imgH: null, edgeTouch: false,
         });
     });
 
@@ -313,6 +320,65 @@ function rebuildEntries() {
         `레코드 ${loadedRecords.length}개 · 매칭 이미지 ${withImg}개` + (noImg ? ` · 이미지없음 ${noImg}개` : '');
 
     if (entries.length > 0) selectEntry(0);
+
+    scanEdges();   // 외곽선 접촉 여부를 백그라운드로 채운다
+}
+
+// ── 외곽선 접촉 판정 ──────────────────────────────────────
+// JSON에는 이미지 크기가 없으므로 원본 이미지 크기(imgW/imgH)를 알아야 판정 가능.
+function computeEdges(entry) {
+    if (!entry.imgW || !entry.imgH) { return; }
+    let any = false;
+    entry.boxes.forEach(b => {
+        b.edge = (b.xmin <= EDGE_TOL || b.ymin <= EDGE_TOL ||
+                  b.xmax >= entry.imgW - EDGE_TOL || b.ymax >= entry.imgH - EDGE_TOL);
+        if (b.edge) any = true;
+    });
+    entry.edgeTouch = any;
+}
+
+// 매칭된 이미지들의 원본 크기를 순차 로드해 외곽선 접촉 여부를 채운다 (진행률 표시).
+async function scanEdges() {
+    const token = ++edgeScanToken;
+    const targets = [];
+    entries.forEach((e, i) => { if (e.imageFile && !e.imgW) targets.push({ e, i }); });
+    if (!targets.length) { updateStatusFromEntries(); return; }
+
+    const topEl = document.getElementById('topStatus');
+    const baseStatus = topEl.textContent;
+    let done = 0, pos = 0;
+    const CONC = 8;
+
+    async function worker() {
+        while (pos < targets.length) {
+            if (token !== edgeScanToken) return;   // 새 폴더 로드 → 취소
+            const { e, i } = targets[pos++];
+            await new Promise(res => {
+                const url = URL.createObjectURL(e.imageFile);
+                const img = new Image();
+                img.onload = () => {
+                    e.imgW = img.naturalWidth; e.imgH = img.naturalHeight;
+                    computeEdges(e);
+                    updateListItem(i);
+                    URL.revokeObjectURL(url); res();
+                };
+                img.onerror = () => { URL.revokeObjectURL(url); res(); };
+                img.src = url;
+            });
+            done++;
+            if (done % 10 === 0 || done === targets.length) {
+                if (token !== edgeScanToken) return;
+                topEl.textContent = `외곽선 접촉 스캔 중… ${done}/${targets.length}`;
+                updateStatusFromEntries();
+                if (edgeOnly) applyListFilter();
+            }
+        }
+    }
+    await Promise.all(Array.from({ length: Math.min(CONC, targets.length) }, worker));
+    if (token !== edgeScanToken) return;
+    topEl.textContent = baseStatus;
+    updateStatusFromEntries();
+    if (edgeOnly) applyListFilter();
 }
 
 // ── 파일 목록 ─────────────────────────────────────────────
@@ -323,6 +389,7 @@ function entryLabelText(entry) {
     else if (!entry.hasImage) prefix += '[이미지없음] ';
     if (entry.unableToWork) prefix += '🚫 ';
     if (entry.frameFlag) prefix += '⚑ ';
+    if (entry.edgeTouch) prefix += '🔲 ';
     if (entry.dirty) prefix += '* ';
     const idPart = entry.dataID ? entry.dataID + ' · ' : '';
     return { text: prefix + idPart + entry.filename, flags };
@@ -380,7 +447,8 @@ function applyListFilter() {
         const e = entries[i];
         const matchQ = !q || e.filename.toLowerCase().includes(q) || (e.dataID && e.dataID.includes(q));
         const matchP = !problemOnly || isProblem(e);
-        el.style.display = (matchQ && matchP) ? '' : 'none';
+        const matchE = !edgeOnly || e.edgeTouch;
+        el.style.display = (matchQ && matchP && matchE) ? '' : 'none';
     });
 }
 
@@ -390,6 +458,13 @@ function toggleProblemOnly() {
     problemOnly = !problemOnly;
     const btn = document.getElementById('btnProblemOnly');
     btn.className = 'btn btn-toggle' + (problemOnly ? ' active' : '');
+    applyListFilter();
+}
+
+function toggleEdgeOnly() {
+    edgeOnly = !edgeOnly;
+    const btn = document.getElementById('btnEdgeOnly');
+    btn.className = 'btn btn-toggle' + (edgeOnly ? ' active' : '');
     applyListFilter();
 }
 
@@ -409,7 +484,14 @@ function selectEntry(idx) {
     if (entry.imageFile) {
         const url = URL.createObjectURL(entry.imageFile);
         const img = new Image();
-        img.onload = () => { currentImage = img; drawCanvas(); URL.revokeObjectURL(url); };
+        img.onload = () => {
+            currentImage = img;
+            if (!entry.imgW) {
+                entry.imgW = img.naturalWidth; entry.imgH = img.naturalHeight;
+                computeEdges(entry); updateListItem(idx); updateStatusFromEntries();
+            }
+            drawCanvas(); URL.revokeObjectURL(url);
+        };
         img.src = url;
     } else {
         drawCanvas();
@@ -533,6 +615,16 @@ function drawCanvas() {
         ctx.lineWidth = lw;
         ctx.strokeRect(x1, y1, bw, bh);
 
+        // 외곽선 접촉 박스: 빨간 점선으로 강조
+        if (box.edge) {
+            ctx.save();
+            ctx.setLineDash([6, 4]);
+            ctx.lineWidth = Math.max(1.2, lw);
+            ctx.strokeStyle = '#ff3b30';
+            ctx.strokeRect(x1, y1, bw, bh);
+            ctx.restore();
+        }
+
         ctx.font = 'bold 12px Consolas, monospace';
         const tm = ctx.measureText(box.label);
         const tw = tm.width + 6;
@@ -634,7 +726,7 @@ function selectBox(idx) {
     const box = entry.boxes[idx];
     document.getElementById('boxInfo').textContent =
         `박스 #${idx+1}/${entry.boxes.length}  |  라벨: [${box.label}]  |  (${box.xmin},${box.ymin})-(${box.xmax},${box.ymax})` +
-        (box.flagged ? '  |  ⚑ 문제' : '');
+        (box.flagged ? '  |  ⚑ 문제' : '') + (box.edge ? '  |  🔲 외곽접촉' : '');
     document.getElementById('labelInput').disabled = false;
     document.getElementById('btnApply').disabled = false;
     document.getElementById('btnFlagBox').disabled = false;
@@ -830,6 +922,7 @@ function applyCoords() {
     box.modified = true;
     entry.dirty = true;
     writeCoordsToSrc(box);
+    computeEdges(entry);   // 좌표 변경 → 외곽선 접촉 재판정
 
     undoStack.push({ type: 'coords', entryIdx: currentIndex, boxIdx: selectedBox, oldLabel: box.label, newLabel: box.label, oldCoords, newCoords: { xmin: newXmin, ymin: newYmin, xmax: newXmax, ymax: newYmax } });
     updateListItem(currentIndex);
@@ -857,6 +950,7 @@ function undo() {
         box.xmax = action.oldCoords.xmax;
         box.ymax = action.oldCoords.ymax;
         writeCoordsToSrc(box);
+        computeEdges(entry);   // 좌표 복원 → 외곽선 접촉 재판정
     }
 
     box.modified = false;
@@ -964,8 +1058,9 @@ function updateStatusFromEntries() {
     const flaggedFrames = entries.filter(e => isProblem(e)).length;
     const flaggedBoxes = entries.reduce((s, e) => s + e.boxes.filter(b => b.flagged).length, 0);
     const unable = entries.filter(e => e.unableToWork).length;
+    const edge = entries.filter(e => e.edgeTouch).length;
     document.getElementById('bottomStatus').textContent =
-        `총 ${total}  |  레코드 ${rec}  |  수정 ${dirty}  |  문제프레임 ${flaggedFrames}  |  문제박스 ${flaggedBoxes}  |  작업불가 ${unable}`;
+        `총 ${total}  |  레코드 ${rec}  |  수정 ${dirty}  |  문제프레임 ${flaggedFrames}  |  문제박스 ${flaggedBoxes}  |  작업불가 ${unable}  |  🔲 외곽접촉 ${edge}`;
 }
 
 // ── 키보드 단축키 ─────────────────────────────────────────
@@ -999,6 +1094,8 @@ document.addEventListener('keydown', (e) => {
         toggleViewMode();
     } else if (e.key === 'r') {
         toggleFitBoxes();
+    } else if (e.key === 'e') {
+        toggleEdgeOnly();
     } else if (e.key === 'q') {
         if (selectedBox !== null) toggleBoxFlag();
     } else if (e.key === 'w') {
