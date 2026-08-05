@@ -173,6 +173,7 @@ let viewMode = 'all';
 let problemOnly = false;
 let fitToBoxes = true;   // 박스 영역만 확대 표시 (기본 ON)
 let edgeOnly = false;    // 외곽선 접촉 프레임만 보기
+let hideBoxes = false;   // 전체 박스 숨김 (H 토글)
 let edgeScanToken = 0;   // 외곽선 스캔 취소용 토큰
 const EDGE_TOL = 1;      // 외곽선 접촉 판정 허용오차(px)
 
@@ -589,7 +590,7 @@ function drawCanvas() {
     let ci = 0;
     entry.boxes.forEach(b => { if (!(b.label in colorMap)) { colorMap[b.label] = COLORS[ci++ % COLORS.length]; } });
 
-    entry.boxes.forEach((box, i) => {
+    if (!hideBoxes) entry.boxes.forEach((box, i) => {
         if (viewMode === 'single' && selectedBox !== null && i !== selectedBox) return;
 
         const x1 = ox + (box.xmin - rx0) * scale;
@@ -1042,6 +1043,13 @@ function toggleViewMode() {
     drawCanvas();
 }
 
+function toggleHideBoxes() {
+    hideBoxes = !hideBoxes;
+    drawCanvas();
+    document.getElementById('boxInfo').textContent =
+        hideBoxes ? '박스 숨김 — 이미지만 표시 (H: 다시 표시)' : '박스 표시';
+}
+
 function toggleFitBoxes() {
     fitToBoxes = !fitToBoxes;
     const btn = document.getElementById('btnFitBoxes');
@@ -1096,6 +1104,8 @@ document.addEventListener('keydown', (e) => {
         toggleFitBoxes();
     } else if (e.key === 'e') {
         toggleEdgeOnly();
+    } else if (e.key === 'h' || e.key === 'H') {
+        toggleHideBoxes();
     } else if (e.key === 'q') {
         if (selectedBox !== null) toggleBoxFlag();
     } else if (e.key === 'w') {
