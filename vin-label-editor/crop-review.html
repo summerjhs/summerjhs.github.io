@@ -178,13 +178,18 @@ function nameKeyOf(record) {
 document.getElementById('folderInput').addEventListener('change', (e) => {
     const files = Array.from(e.target.files);
     if (!files.length) return;
+    // webkitdirectory는 상위 폴더 선택 시 모든 하위 폴더 파일을 재귀적으로 넘겨준다.
+    // 하위 폴더 간 같은 파일명은 마지막 것만 남으므로 개수를 세어 경고한다.
     loadedImages = {};
+    let dupCount = 0;
     for (const f of files) {
         const lower = f.name.toLowerCase();
         if (lower.endsWith('.jpg') || lower.endsWith('.jpeg') || lower.endsWith('.png') || lower.endsWith('.bmp')) {
-            loadedImages[f.name] = f;
+            if (loadedImages[f.name]) dupCount++;
+            loadedImages[f.name] = f;   // f.name은 경로 없는 파일명
         }
     }
+    if (dupCount) console.warn(`하위 폴더 간 파일명이 중복된 이미지 ${dupCount}개는 마지막 항목만 사용됩니다.`);
     rebuild();
 });
 
@@ -209,7 +214,8 @@ function rebuild() {
     loadedRecords.forEach(rec => {
         const nk = nameKeyOf(rec);
         const fn = rec.importData_file_name || (nk && rec[nk] && rec[nk].sourceValue) || '';
-        const img = loadedImages[fn] || null;
+        // JSON 파일명이 경로(하위폴더/파일)를 포함해도 파일명만으로 매칭한다.
+        const img = loadedImages[fn] || loadedImages[String(fn).split(/[\\/]/).pop()] || null;
         const boxes = [];
         if (nk && rec[nk] && rec[nk].data) {
             rec[nk].data.forEach(d => {
@@ -322,7 +328,8 @@ function loadFrameImage(filename) {
         return Promise.resolve(v.img);
     }
     if (imgPending.has(filename)) return imgPending.get(filename);
-    const file = loadedImages[filename];
+    // filename이 경로를 포함해도 파일명만으로 다시 찾는다 (rebuild의 매칭과 동일 규칙).
+    const file = loadedImages[filename] || loadedImages[String(filename).split(/[\\/]/).pop()];
     if (!file) return Promise.resolve(null);
     const p = new Promise((resolve) => {
         const url = URL.createObjectURL(file);
