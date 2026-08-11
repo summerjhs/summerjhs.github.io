@@ -74,6 +74,10 @@
          border:2px solid rgba(255,255,255,.85);box-shadow:0 6px 24px rgba(0,0,0,.7);
          image-rendering:pixelated;background:#0a0c10}
   #loupe.on{display:block}
+  /* 5px 커서 가이드 박스 (표시 크기 = 5 이미지픽셀 × 배율) */
+  #guidebox{position:absolute;pointer-events:none;display:none;box-sizing:border-box;
+            border:1px solid #ff2fd0;outline:1px solid rgba(255,255,255,.7);z-index:2}
+  #guidebox.on{display:block}
   #lbcap{margin-top:12px;color:#eef3fb;font-size:13px}
   #lbhint{margin-top:6px;color:#aebbd2;font-size:12px}
   /* 오류 체크 패널 */
@@ -113,6 +117,24 @@
   #lb .nav.prev{left:16px}#lb .nav.next{right:16px}
   #lb .close{position:absolute;top:16px;right:20px;font-size:26px;color:#fff;background:none;border:none;cursor:pointer}
   kbd{background:var(--panel2);border:1px solid var(--border);border-bottom-width:2px;border-radius:5px;padding:1px 6px;font-size:11px}
+  /* 작은 박스 검사 모달 */
+  #tinymodal{position:fixed;inset:0;background:rgba(18,28,46,.5);display:none;z-index:60;
+             align-items:center;justify-content:center;padding:20px}
+  #tinymodal.on{display:flex}
+  #tinymodal .tm-card{position:relative;background:var(--panel);border:1px solid var(--border);border-radius:14px;
+             padding:22px 22px 18px;width:min(560px,94vw);max-height:86vh;overflow:auto;
+             box-shadow:0 20px 60px -20px rgba(18,28,46,.5)}
+  #tinymodal h3{font-size:16px;font-weight:650;margin-bottom:12px}
+  #tinymodal .tm-body{font-size:13px;line-height:1.75;color:var(--text)}
+  #tinymodal .tm-body .muted{color:var(--muted)}
+  #tinymodal .tm-body table{border-collapse:collapse;margin-top:6px;width:100%}
+  #tinymodal .tm-body td{padding:4px 8px;border-bottom:1px solid var(--border)}
+  #tinymodal .tm-body td.num{text-align:right;font-variant-numeric:tabular-nums;font-weight:600}
+  #tinymodal .tm-big{font-size:22px;font-weight:700;color:#c0392b;font-variant-numeric:tabular-nums}
+  #tinymodal .tm-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:18px}
+  #tinymodal .tm-close{position:absolute;top:12px;right:14px;background:none;border:none;color:var(--muted);font-size:20px;cursor:pointer}
+  #tmDelete:not([disabled]){background:#f7dfe0;border-color:#e2b8bb;color:#8a1f1f;font-weight:600}
+  #tmDelete:not([disabled]):hover{background:#f2c9cc}
 </style>
 </head>
 <body>
@@ -142,6 +164,7 @@
         <option value="all">전체</option>
         <option value="has">오류 있음</option>
         <option value="none">오류 없음</option>
+        <option value="tiny5">두 변&lt;5px 박스 있음</option>
         <option value="Wrong class">Wrong class</option>
         <option value="Not a target">Not a target</option>
         <option value="Missing object">Missing object</option>
@@ -166,7 +189,10 @@
       <input type="range" id="labelSize" min="0.5" max="3" value="1" step="0.25" style="vertical-align:middle;width:80px"></label>
     <label class="muted"><input type="checkbox" id="showBoxes" checked> 박스</label>
     <label class="muted"><input type="checkbox" id="showLabels" checked> 클래스명</label>
+    <label class="muted"><input type="checkbox" id="showTiny"> 작은박스 5px</label>
+    <label class="muted"><input type="checkbox" id="guideCursor"> 5px 커서</label>
     <span class="muted">표시 토글 <kbd>H</kbd></span>
+    <button class="btn" id="scanTiny" title="두 변 모두 5px 미만인 박스 검사·삭제 (한 변이라도 5px 이상이면 제외)">🔎 5px 검사·정리</button>
     <button class="btn" id="exportPptx" title="오류가 기록된 이미지를 PPTX로 내보내기">⬇ 오류 PPTX</button>
     <button class="btn" id="clearErrors" title="기록된 모든 오류 삭제">🗑 오류 전체 삭제</button>
     <input type="search" id="q" placeholder="이미지 이름 검색…" autocomplete="off">
@@ -190,11 +216,24 @@
   <div id="lbmain">
     <button class="nav prev" title="이전 (←)">‹</button>
     <button class="nav next" title="다음 (→)">›</button>
-    <div id="lbstage"><canvas id="lbcv"></canvas><canvas id="loupe"></canvas></div>
+    <div id="lbstage"><canvas id="lbcv"></canvas><canvas id="loupe"></canvas><div id="guidebox"></div></div>
     <div id="lbcap"></div>
     <div id="lbhint">박스 클릭 / 빈 곳 더블클릭 → 오류 체크 · 돋보기: 마우스 올리기 · 확대 <kbd>+</kbd>/<kbd>-</kbd> · 표시 토글 <kbd>H</kbd> · 이동 <kbd>D</kbd><kbd>F</kbd> 또는 <kbd>←</kbd><kbd>→</kbd></div>
   </div>
   <div id="errpanel"></div>
+</div>
+
+<div id="tinymodal">
+  <div class="tm-card">
+    <button class="tm-close" title="닫기">✕</button>
+    <h3>작은 박스 검사 · 정리 (기준 5px)</h3>
+    <div id="tmBody" class="tm-body">여기에 결과가 표시됩니다.</div>
+    <div class="tm-actions">
+      <button class="btn" id="tmScan">전체 스캔</button>
+      <button class="btn" id="tmDelete" disabled>두 변 모두 ≤5px 박스 삭제</button>
+      <button class="btn" id="tmExport" disabled>정리된 라벨 ZIP 내보내기</button>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -213,8 +252,21 @@ const state = {
   lineW: 1,            // 박스 선 굵기 (툴에서 조절)
   labelScale: 1,       // 라벨 텍스트 크기 배율 (툴에서 조절)
   errors: new Map(),   // base -> Array<err>  (err: {kind:'box'|'point', boxIndex?, x?, y?, type, note, correct?})
-  selBase: null, sel: null   // 선택: {mode:'box',boxIndex} | {mode:'point',x,y}
+  selBase: null, sel: null,  // 선택: {mode:'box',boxIndex} | {mode:'point',x,y}
+  showTiny: false,     // 작은 박스(5px) 강조 토글
+  showGuide: false,    // 5px 커서 가이드 박스 토글
+  dims: new Map(),     // base -> {w,h}  이미지 픽셀 크기 캐시
+  tinyScanned: false,  // 전체 스캔 완료 여부
+  tinyBases: new Set(),// 한 변이라도 <5px 박스가 있는 base
+  tinyDelMap: new Map(),// base -> [boxIndex...]  두 변 모두 ≤5px (삭제 대상)
+  changedLabels: new Set()  // 삭제로 변경된 base (내보내기용)
 };
+
+const TINY_PX = 5;   // 작은 박스 기준(px)
+// 박스의 픽셀 폭·높이 (박스/폴리 공통)
+function boxSidesPx(b, W, H){ const r=boxRectPx(b,W,H); return {w:r.w, h:r.h, min:Math.min(r.w,r.h), max:Math.max(r.w,r.h)}; }
+// 검사·삭제 대상: 두 변 모두 5px 미만 (한 변이라도 5px 이상이면 제외)
+const isTinyBox = (b,W,H)=> boxSidesPx(b,W,H).max < TINY_PX;
 
 // 오류 종류 5가지 (영문)
 const ERR_TYPES = ['Wrong class','Not a target','Missing object','Consistency','Other'];
@@ -339,11 +391,11 @@ async function parseLabel(base){
       // 픽셀 좌표(값이 1보다 크게 나오는 경우) 자동 감지
       const px = nums.slice(0,4).some(v=>v>1.5);
       if(nums.length===4 || nums.length===5){
-        boxes.push({cls, type:'box', cx:nums[0],cy:nums[1],w:nums[2],h:nums[3], px});
+        boxes.push({cls, type:'box', cx:nums[0],cy:nums[1],w:nums[2],h:nums[3], px, raw:t});
       } else if(nums.length>=6){
         let c = nums.slice(); if(c.length%2===1) c = c.slice(0,-1);
         const pts=[]; for(let i=0;i<c.length;i+=2) pts.push([c[i],c[i+1]]);
-        boxes.push({cls, type:'poly', pts, px:pts.some(pt=>pt[0]>1.5||pt[1]>1.5)});
+        boxes.push({cls, type:'poly', pts, px:pts.some(pt=>pt[0]>1.5||pt[1]>1.5), raw:t});
       }
     }
   }
@@ -380,12 +432,15 @@ function applyFilterSort(){
     const count = boxes.length;
     if(mode==='labeled' && count===0) continue;
     if(mode==='empty' && count>0) continue;
-    // 오류 필터: 있음/없음/특정 종류
+    // 오류 필터: 있음/없음/작은박스/특정 종류
     if(errMode!=='all'){
-      const errArr=state.errors.get(base)||[];
-      if(errMode==='has' && !errArr.length) continue;
-      else if(errMode==='none' && errArr.length) continue;
-      else if(errMode!=='has' && errMode!=='none' && !errArr.some(e=>e.type===errMode)) continue;
+      if(errMode==='tiny5'){ if(!state.tinyBases.has(base)) continue; }
+      else {
+        const errArr=state.errors.get(base)||[];
+        if(errMode==='has' && !errArr.length) continue;
+        else if(errMode==='none' && errArr.length) continue;
+        else if(errMode!=='has' && errMode!=='none' && !errArr.some(e=>e.type===errMode)) continue;
+      }
     }
     if(terms.length){
       const n=meta.name.toLowerCase();
@@ -468,6 +523,7 @@ function drawOnCanvas(canvas, img, boxes, showNames, opts){
   canvas.width=W; canvas.height=H;
   const ctx=canvas.getContext('2d');
   ctx.drawImage(img,0,0);
+  if(opts.base!=null) state.dims.set(opts.base, {w:W, h:H});   // 렌더 시 픽셀 크기 캐시(스캔 재사용)
   if(!(opts.forceBoxes || state.showBoxes)) return;   // 단축키 H로 박스 전체 숨김 (내보내기는 forceBoxes)
   const lw=state.lineW;
   ctx.lineWidth=lw;
@@ -524,6 +580,14 @@ function drawOnCanvas(canvas, img, boxes, showNames, opts){
   if(sel){
     if(sel.mode==='box' && boxes[sel.boxIndex]) drawSelHighlight(ctx, boxRectPx(boxes[sel.boxIndex],W,H), W, H);
     else if(sel.mode==='point') drawPointSel(ctx, sel.x*W, sel.y*H, W, H);
+  }
+  // 작은 박스 강조 (토글): 두 변 모두 5px 미만 → 자홍 링+X (박스가 작아 위치 표시)
+  if(state.showTiny){
+    for(const b of boxes){
+      if(state.classOff.has(b.cls)) continue;
+      if(boxSidesPx(b,W,H).max >= TINY_PX) continue;   // 한 변이라도 5px 이상이면 제외
+      drawTinyMark(ctx, boxRectPx(b,W,H), W, H);
+    }
   }
 }
 
@@ -584,6 +648,21 @@ function drawPointSel(ctx, px, py, W, H){
   ctx.beginPath();
   ctx.moveTo(px-r*1.35,py); ctx.lineTo(px+r*1.35,py);
   ctx.moveTo(px,py-r*1.35); ctx.lineTo(px,py+r*1.35);
+  ctx.stroke();
+  ctx.restore();
+}
+// 작은 박스 강조: 위치를 찾을 수 있도록 링 + 대각선 마커 (두 변 모두 5px 미만)
+function drawTinyMark(ctx, r, W, H){
+  const col = '#ff2fd0';   // 자홍 (검사·삭제 대상)
+  const cx=r.x+r.w/2, cy=r.y+r.h/2;
+  const rad=Math.max(Math.min(W,H)/45, 16);
+  const u=Math.max(2, Math.min(W,H)/300);
+  ctx.save();
+  ctx.strokeStyle=col; ctx.lineWidth=Math.max(2, u+state.lineW);
+  ctx.beginPath(); ctx.arc(cx,cy,rad,0,Math.PI*2); ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(cx-rad*0.62,cy-rad*0.62); ctx.lineTo(cx+rad*0.62,cy+rad*0.62);
+  ctx.moveTo(cx+rad*0.62,cy-rad*0.62); ctx.lineTo(cx-rad*0.62,cy+rad*0.62);
   ctx.stroke();
   ctx.restore();
 }
@@ -857,18 +936,38 @@ function drawLoupe(){
   g.clearRect(0,0,LOUPE_SIZE,LOUPE_SIZE);
   g.imageSmoothingEnabled=false;
   g.drawImage(cv, sx-src/2, sy-src/2, src, src, 0,0, LOUPE_SIZE, LOUPE_SIZE);
-  // 중심 십자
-  g.strokeStyle='rgba(255,255,255,.5)'; g.lineWidth=1;
-  g.beginPath(); g.moveTo(LOUPE_SIZE/2,LOUPE_SIZE/2-8); g.lineTo(LOUPE_SIZE/2,LOUPE_SIZE/2+8);
-  g.moveTo(LOUPE_SIZE/2-8,LOUPE_SIZE/2); g.lineTo(LOUPE_SIZE/2+8,LOUPE_SIZE/2); g.stroke();
+  // 5px 가이드(확대 배율 적용) 또는 중심 십자
+  if(state.showGuide){
+    const gs=TINY_PX*loupeZoom;   // 돋보기 안 5 이미지픽셀 = 5×배율
+    g.strokeStyle='#ff2fd0'; g.lineWidth=1;
+    g.strokeRect(Math.round((LOUPE_SIZE-gs)/2)+.5, Math.round((LOUPE_SIZE-gs)/2)+.5, Math.round(gs), Math.round(gs));
+  } else {
+    g.strokeStyle='rgba(255,255,255,.5)'; g.lineWidth=1;
+    g.beginPath(); g.moveTo(LOUPE_SIZE/2,LOUPE_SIZE/2-8); g.lineTo(LOUPE_SIZE/2,LOUPE_SIZE/2+8);
+    g.moveTo(LOUPE_SIZE/2-8,LOUPE_SIZE/2); g.lineTo(LOUPE_SIZE/2+8,LOUPE_SIZE/2); g.stroke();
+  }
   // 커서를 따라다니되 화면 밖으로 나가지 않게
   const stage=$('lbstage').getBoundingClientRect();
   let lx=lastMouse.x-stage.left-LOUPE_SIZE/2, ly=lastMouse.y-stage.top-LOUPE_SIZE/2;
   lp.style.left=lx+'px'; lp.style.top=ly+'px';
   lp.classList.add('on');
 }
-$('lbcv').addEventListener('mousemove',e=>{ lastMouse={x:e.clientX,y:e.clientY}; drawLoupe(); });
-$('lbcv').addEventListener('mouseleave',()=>{ lastMouse=null; hideLoupe(); });
+// 5px 커서 가이드: 화면 표시 크기 = 5 이미지픽셀 × (표시배율), 커서 중심에 배치
+function updateGuide(){
+  const gb=$('guidebox'); if(!gb) return;
+  if(!state.showGuide || !lastMouse || !$('lb').classList.contains('on')){ gb.classList.remove('on'); return; }
+  const cv=$('lbcv'), r=cv.getBoundingClientRect();
+  const mx=lastMouse.x-r.left, my=lastMouse.y-r.top;
+  if(mx<0||my<0||mx>r.width||my>r.height){ gb.classList.remove('on'); return; }
+  const size=Math.max(1, TINY_PX * r.width/cv.width);   // 표시 픽셀 크기
+  const stage=$('lbstage').getBoundingClientRect();
+  gb.style.width=size+'px'; gb.style.height=size+'px';
+  gb.style.left=(lastMouse.x-stage.left-size/2)+'px';
+  gb.style.top=(lastMouse.y-stage.top-size/2)+'px';
+  gb.classList.add('on');
+}
+$('lbcv').addEventListener('mousemove',e=>{ lastMouse={x:e.clientX,y:e.clientY}; drawLoupe(); updateGuide(); });
+$('lbcv').addEventListener('mouseleave',()=>{ lastMouse=null; hideLoupe(); updateGuide(); });
 // 박스 클릭 → 선택 (오류 체크)
 $('lbcv').addEventListener('click',e=>{
   const it=state.items[state.lbIdx]; if(!it) return;
@@ -925,7 +1024,7 @@ function crc32(buf){
   for(let i=0;i<buf.length;i++){ c ^= buf[i]; for(let k=0;k<8;k++) c = (c>>>1) ^ (0xEDB88320 & -(c&1)); }
   return (~c)>>>0;
 }
-function zipStore(entries){   // entries: [{name, data:Uint8Array}] → Blob (method 0, 무압축)
+function zipStore(entries, mime){   // entries: [{name, data:Uint8Array}] → Blob (method 0, 무압축)
   const parts=[], central=[]; let offset=0;
   for(const e of entries){
     const nameB=_enc(e.name), crc=crc32(e.data), size=e.data.length;
@@ -947,7 +1046,7 @@ function zipStore(entries){   // entries: [{name, data:Uint8Array}] → Blob (me
   const end=new Uint8Array(22), ev=new DataView(end.buffer);
   ev.setUint32(0,0x06054b50,true); ev.setUint16(8,entries.length,true); ev.setUint16(10,entries.length,true);
   ev.setUint32(12,cdSize,true); ev.setUint32(16,offset,true);
-  return new Blob([...parts,...central,end], {type:'application/vnd.openxmlformats-officedocument.presentationml.presentation'});
+  return new Blob([...parts,...central,end], {type: mime || 'application/vnd.openxmlformats-officedocument.presentationml.presentation'});
 }
 
 const PPTX_NS = {
@@ -1119,8 +1218,160 @@ async function exportPptx(){
   alert(`오류 이미지 ${n}장을 PPTX로 내보냈습니다.`);
 }
 
+// ================= 작은 박스(5px) 검사 · 정리 =================
+// 이미지 픽셀 크기: 파일 헤더(JPEG SOF / PNG IHDR)만 읽어 빠르게 추출. 실패 시 디코드 폴백.
+async function imageSizeFast(file){
+  try{
+    const buf=new Uint8Array(await file.slice(0, 512*1024).arrayBuffer());
+    const dv=new DataView(buf.buffer);
+    if(buf[0]===0x89 && buf[1]===0x50 && buf[2]===0x4E){          // PNG
+      return {w:dv.getUint32(16), h:dv.getUint32(20)};
+    }
+    if(buf[0]===0xFF && buf[1]===0xD8){                            // JPEG
+      let i=2;
+      while(i+9 < buf.length){
+        if(buf[i]!==0xFF){ i++; continue; }
+        let m=buf[i+1]; while(m===0xFF){ i++; m=buf[i+1]; }        // 채움 바이트 건너뜀
+        if(m>=0xC0 && m<=0xCF && m!==0xC4 && m!==0xC8 && m!==0xCC) // SOF 마커
+          return {h:dv.getUint16(i+5), w:dv.getUint16(i+7)};
+        if(m===0x01 || (m>=0xD0 && m<=0xD9)){ i+=2; continue; }    // 길이 없는 마커
+        if(m===0xDA) break;                                        // SOS 도달 → 중단
+        const len=dv.getUint16(i+2); if(len<2) break; i+=2+len;
+      }
+    }
+  }catch(e){}
+  return null;
+}
+async function ensureDims(base){
+  if(state.dims.has(base)) return state.dims.get(base);
+  const meta=state.images.get(base); if(!meta) return null;
+  let d=await imageSizeFast(meta.file);
+  if(!d){ try{ const {im,url}=await loadImg(meta.file); d={w:im.naturalWidth, h:im.naturalHeight}; URL.revokeObjectURL(url); }catch(e){ d=null; } }
+  if(d) state.dims.set(base, d);
+  return d;
+}
+// 전체 스캔: 모든 박스의 픽셀 변 길이를 검사
+async function tinyScan(onProgress){
+  const bases=[...state.images.keys()];
+  let done=0, tinyBoxes=0;
+  const delMap=new Map();
+  const CONC=24;
+  for(let i=0;i<bases.length;i+=CONC){
+    await Promise.all(bases.slice(i,i+CONC).map(async base=>{
+      const d=await ensureDims(base);
+      if(d){
+        for(const [idx,b] of (state.parsed.get(base)||[]).entries()){
+          if(boxSidesPx(b, d.w, d.h).max < TINY_PX){   // 두 변 모두 5px 미만
+            tinyBoxes++; if(!delMap.has(base)) delMap.set(base,[]); delMap.get(base).push(idx);
+          }
+        }
+      }
+    }));
+    done=Math.min(bases.length, i+CONC);
+    if(onProgress) onProgress(done, bases.length);
+  }
+  state.tinyBases=new Set(delMap.keys()); state.tinyDelMap=delMap; state.tinyScanned=true;
+  state._tinyDel=tinyBoxes;
+  return {images:bases.length, tinyBoxes, tinyImages:delMap.size};
+}
+// 두 변 모두 ≤5px 박스 삭제(+ 오류 인덱스 재매핑)
+function deleteTinyBoxes(){
+  const map=state.tinyDelMap; if(!map||!map.size) return {deleted:0, imgs:0};
+  let deleted=0, imgs=0;
+  for(const [base, idxs] of map){
+    const set=new Set(idxs);
+    const boxes=state.parsed.get(base)||[];
+    const oldToNew=new Map(); const nb=[];
+    boxes.forEach((b,i)=>{ if(set.has(i)){ deleted++; return; } oldToNew.set(i, nb.length); nb.push(b); });
+    state.parsed.set(base, nb); state.changedLabels.add(base); imgs++;
+    const arr=state.errors.get(base);   // 오류가 참조하는 박스 인덱스 갱신
+    if(arr){ const na=[];
+      for(const e of arr){ if(e.kind==='box'){ if(set.has(e.boxIndex)) continue; e.boxIndex=oldToNew.get(e.boxIndex); } na.push(e); }
+      if(na.length) state.errors.set(base, na); else state.errors.delete(base);
+    }
+  }
+  saveErrors();
+  state.tinyDelMap=new Map(); state._tinyDel=0;
+  applyFilterSort(); state.page=0; renderPage();
+  if($('lb').classList.contains('on')){ onLbImage(); drawLightbox(); }
+  return {deleted, imgs};
+}
+// 삭제로 바뀐 라벨을 원본 형식(raw) 그대로 재작성해 ZIP 내보내기
+function boxLine(b){
+  const f=v=> Number.isInteger(v)? String(v) : (+v.toFixed(6)).toString();
+  if(b.type==='box') return `${b.cls} ${f(b.cx)} ${f(b.cy)} ${f(b.w)} ${f(b.h)}`;
+  return `${b.cls} ` + b.pts.map(p=>`${f(p[0])} ${f(p[1])}`).join(' ');
+}
+function exportCleanedLabels(){
+  const set=state.changedLabels;
+  if(!set || !set.size){ alert('삭제로 변경된 라벨이 없습니다.'); return; }
+  const entries=[];
+  for(const base of set){
+    const boxes=state.parsed.get(base)||[];
+    const txt=boxes.map(b=> b.raw!=null ? b.raw : boxLine(b)).join('\n') + (boxes.length? '\n':'');
+    const lf=state.labels.get(base);
+    entries.push({name:(lf?lf.name:(base+'.txt')), data:_enc(txt)});
+  }
+  const blob=zipStore(entries, 'application/zip');
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a'); a.href=url; a.download='labels_cleaned.zip';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url), 2000);
+  alert(`변경된 라벨 ${entries.length}개를 labels_cleaned.zip으로 내보냈습니다.\n원본 라벨을 이 파일들로 교체하세요.`);
+}
+// ---- 모달 ----
+function openTiny(){ $('tinymodal').classList.add('on'); renderTinyBody(); syncTinyButtons(); }
+function closeTiny(){ $('tinymodal').classList.remove('on'); }
+function syncTinyButtons(){
+  const dc=[...state.tinyDelMap.values()].reduce((s,a)=>s+a.length,0);
+  $('tmDelete').disabled = !dc;
+  $('tmExport').disabled = !(state.changedLabels && state.changedLabels.size);
+}
+function renderTinyBody(msg){
+  const el=$('tmBody'); if(!el) return;
+  if(msg){ el.innerHTML=msg; return; }
+  if(!state.images.size){ el.innerHTML='<span class="muted">먼저 이미지·라벨 폴더를 선택하세요.</span>'; return; }
+  if(!state.tinyScanned){ el.innerHTML='<span class="muted">「전체 스캔」을 눌러 모든 이미지의 박스 픽셀 크기를 검사하세요.<br>YOLO 좌표는 정규화값이라, 파일 헤더에서 이미지 실제 해상도를 읽어 픽셀 크기를 계산합니다.<br>기준: <b>두 변 모두 5px 미만</b>인 박스가 작업 제외·삭제 대상입니다.</span>'; return; }
+  const dc=[...state.tinyDelMap.values()].reduce((s,a)=>s+a.length,0);
+  el.innerHTML=`<table>
+    <tr><td>검사한 이미지</td><td class="num">${state.images.size}</td></tr>
+    <tr><td><b>두 변 모두 5px 미만 (작업 제외·삭제 대상)</b></td><td class="num"><span class="tm-big">${dc}</span></td></tr>
+    <tr><td class="muted">└ 해당 이미지</td><td class="num">${state.tinyDelMap.size}</td></tr>
+  </table>
+  <div class="muted" style="margin-top:10px">· 강조해서 보려면 상단 <b>작은박스 5px</b> 체크 또는 오류 필터의 <b>두 변&lt;5px 박스 있음</b>을 사용하세요.<br>· 삭제는 메모리에서 이뤄지며, <b>정리된 라벨 ZIP 내보내기</b>로 저장해 원본을 교체하세요.</div>`;
+}
+
 // ---- controls ----
-['fMode','fSort','fErr'].forEach(id=>$(id).addEventListener('change',()=>{applyFilterSort();state.page=0;renderPage();}));
+['fMode','fSort'].forEach(id=>$(id).addEventListener('change',()=>{applyFilterSort();state.page=0;renderPage();}));
+$('fErr').addEventListener('change', async ()=>{
+  if($('fErr').value==='tiny5' && !state.tinyScanned){
+    const h=$('hint'); const old=h.textContent;
+    await tinyScan((d,t)=>{ h.textContent=`작은 박스 스캔 중… ${d}/${t}`; });
+    h.textContent=old;
+  }
+  applyFilterSort(); state.page=0; renderPage();
+});
+$('showTiny').addEventListener('change',e=>{ state.showTiny=e.target.checked; redrawAll(); });
+$('guideCursor').addEventListener('change',e=>{ state.showGuide=e.target.checked; updateGuide(); if(lastMouse && $('lb').classList.contains('on')) drawLoupe(); });
+$('scanTiny').addEventListener('click', openTiny);
+$('tinymodal').querySelector('.tm-close').addEventListener('click', closeTiny);
+$('tinymodal').addEventListener('click', e=>{ if(e.target.id==='tinymodal') closeTiny(); });
+$('tmScan').addEventListener('click', async ()=>{
+  const b=$('tmScan'), old=b.textContent; b.disabled=true;
+  renderTinyBody('<span class="muted">스캔 중… 0%</span>');
+  await tinyScan((d,t)=>renderTinyBody(`<span class="muted">스캔 중… ${Math.round(d/t*100)}% (${d}/${t})</span>`));
+  b.disabled=false; b.textContent=old;
+  renderTinyBody(); syncTinyButtons();
+});
+$('tmDelete').addEventListener('click', ()=>{
+  const dc=[...state.tinyDelMap.values()].reduce((s,a)=>s+a.length,0);
+  if(!dc) return;
+  if(!confirm(`두 변 모두 5px 이하인 박스 ${dc}개를 삭제할까요?\n삭제 후 「정리된 라벨 ZIP 내보내기」로 저장해야 원본에 반영됩니다.`)) return;
+  const r=deleteTinyBoxes();
+  renderTinyBody(`<b>${r.deleted}개 박스 삭제됨</b> (이미지 ${r.imgs}개).<br><span class="muted">「정리된 라벨 ZIP 내보내기」로 저장해 원본 라벨을 교체하세요.</span>`);
+  syncTinyButtons();
+});
+$('tmExport').addEventListener('click', exportCleanedLabels);
 $('perPage').addEventListener('change',()=>{state.page=0;renderPage();});
 // 오류 전체 삭제
 $('clearErrors').addEventListener('click',()=>{
