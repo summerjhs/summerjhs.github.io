@@ -1,0 +1,80 @@
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }   /* display:flex 등이 hidden 속성을 덮어쓰지 않도록 */
+html, body { margin: 0; height: 100%; background: #12161c; color: #e6edf3;
+  font: 13px/1.45 "Segoe UI", "Malgun Gothic", sans-serif; overflow: hidden; }
+.muted { color: #8b98a9; font-size: 12px; }
+.grow { flex: 1; }
+code { background: #232b35; padding: 1px 5px; border-radius: 4px; font-size: 11px; color: #cbd5e2; }
+button { background: #232b35; color: #e6edf3; border: 1px solid #2c3543; border-radius: 6px;
+  padding: 5px 11px; cursor: pointer; font-size: 13px; }
+button:hover { border-color: #4aa3ff; }
+button.on { background: #123a5a; border-color: #4aa3ff; color: #dcefff; }
+/* 상단바 */
+#topbar { display: flex; align-items: center; gap: 12px; height: 46px; padding: 0 14px;
+  background: #1b2129; border-bottom: 1px solid #2c3543; }
+#btn-open { background: #17402a; border-color: #2e6b45; color: #9bffc0; font-weight: 600; }
+#sec-info b { color: #e6edf3; }
+#viewtoggle { display: inline-flex; border: 1px solid #2c3543; border-radius: 6px; overflow: hidden; }
+#viewtoggle .vmbtn { border: none; border-radius: 0; background: #232b35; color: #9aa3b0; padding: 5px 11px; }
+#viewtoggle .vmbtn + .vmbtn { border-left: 1px solid #2c3543; }
+#viewtoggle .vmbtn.on { background: #123a5a; color: #dcefff; }
+/* 탐색 영역 */
+#nav { position: absolute; top: 46px; left: 0; right: 0; bottom: 0; }
+#nav-empty { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; text-align: center; }
+#nav-empty .big { font-size: 20px; color: #9aa3b0; }
+#stage-wrap, #nav { overflow: auto; }
+#stage.as-overlay { position: relative; display: inline-block; line-height: 0; margin: 14px; }
+#stage.as-gallery { display: block; padding: 14px; }
+#wimg { display: block; max-width: calc(100vw - 40px); max-height: calc(100vh - 100px); border: 1px solid #2c3543; border-radius: 4px; background: #000; }
+#overlay { position: absolute; inset: 0; }
+/* 미작업=회색: 어두운선 + 흰 이중선(halo)로 밝은/어두운 배경 모두에서 잘 보이게 */
+.gcell { position: absolute; border: 1px solid rgba(52,62,80,.92); box-shadow: inset 0 0 0 1px rgba(255,255,255,.55);
+  box-sizing: border-box; cursor: pointer; }
+.gcell:hover { background: rgba(74,163,255,.30); border-color: #7fc0ff; box-shadow: none; z-index: 2; }
+.gcell.empty { cursor: default; border-color: rgba(150,180,220,.28); box-shadow: none; }
+.gcell.empty:hover { background: transparent; }
+.gcell.anno { border: 2px solid #3ecf6a; background: rgba(62,207,106,.18); box-shadow: none; }       /* 작업(라벨)=초록 */
+.gcell.reviewed { border: 2px solid #f2c94c; background: rgba(242,201,76,.20); box-shadow: none; }    /* 검토완료(무라벨)=노랑 */
+.gcell .gb.rv { color: #ffe08a; }
+.gcell .gb { position: absolute; top: 0; right: 2px; font-size: 10px; font-weight: 700; color: #9fffc0; text-shadow: 0 0 3px #000,0 0 3px #000; }
+/* 갤러리 */
+#gallery { display: grid; gap: 6px; }
+.gcard { position: relative; background: #0c0e12; border: 2px solid #5a6472; border-radius: 5px; overflow: hidden;
+  cursor: pointer; aspect-ratio: 4/3; background-size: cover; background-position: center; }   /* 미작업=회색 */
+.gcard:hover { border-color: #4aa3ff; }
+.gcard.anno { border-color: #3ecf6a; }
+.gcard.reviewed { border-color: #f2c94c; }
+.gcard .gbc.rv { color: #ffe08a; }
+.gcard.empty { background: transparent; border-color: rgba(150,180,220,.12); cursor: default; }
+.gcard .sub { position: absolute; top: 2px; left: 3px; font-size: 10px; color: #cfe; background: rgba(0,0,0,.55); padding: 0 4px; border-radius: 3px; }
+.gcard .gbc { position: absolute; bottom: 3px; right: 3px; font-size: 11px; font-weight: 700; color: #9fffc0; background: rgba(20,22,28,.8); padding: 0 5px; border-radius: 3px; }
+.gcard svg.cardpoly { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
+.gcard svg.cardpoly polygon { vector-effect: non-scaling-stroke; stroke-width: 1.5; }
+/* 어노테이션 화면 */
+#anno { position: absolute; top: 46px; left: 0; right: 0; bottom: 0; display: flex; }
+#side { width: 250px; flex: none; background: #1b2129; border-right: 1px solid #2c3543; display: flex; flex-direction: column; }
+.side-head { padding: 10px 12px; border-bottom: 1px solid #2c3543; display: flex; flex-direction: column; gap: 6px; }
+#classgrp { padding: 10px 12px; border-bottom: 1px solid #2c3543; display: flex; flex-direction: column; gap: 5px; }
+.cg-label { font-size: 11px; color: #8b98a9; }
+.clsbtn { text-align: left; }
+.clsbtn[data-cls="0"] { color: #40dcc8; } .clsbtn[data-cls="1"] { color: #4d9bff; } .clsbtn[data-cls="2"] { color: #c77dff; }
+.clsbtn.on[data-cls="0"] { background: #103c37; border-color: #40dcc8; color: #9ff5e8; }
+.clsbtn.on[data-cls="1"] { background: #10294d; border-color: #4d9bff; color: #cfe1ff; }
+.clsbtn.on[data-cls="2"] { background: #2b1f45; border-color: #c77dff; color: #e7d3ff; }
+.ip-head { padding: 8px 12px; font-size: 12px; color: #9aa3b0; border-bottom: 1px solid #2c3543; }
+#instlist { list-style: none; margin: 0; padding: 0; overflow-y: auto; flex: 1; }
+#instlist li { display: flex; align-items: center; gap: 6px; padding: 5px 12px; font-size: 12px; cursor: pointer; border-bottom: 1px solid #222a33; }
+#instlist li:hover { background: #232833; } #instlist li.sel { background: #2d3446; color: #fff; }
+#instlist li .idot { width: 9px; height: 9px; border-radius: 2px; flex: none; }
+#instlist li .it { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#instlist li .ix { color: #a05555; padding: 0 4px; } #instlist li .ix:hover { color: #ff6666; }
+.side-foot { padding: 10px 12px; border-top: 1px solid #2c3543; display: flex; align-items: center; gap: 10px; }
+#btn-save { background: #17402a; border-color: #2e6b45; color: #9bffc0; }
+#btn-review { background: #2a2f3a; border-color: #4a5568; color: #cbd5e2; }
+#dirty { color: #ffab2e; }
+#cvwrap { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+#toolbar { display: flex; align-items: center; gap: 6px; padding: 6px 10px; background: #20242c; border-bottom: 1px solid #2c3543; }
+#canvas-wrap { position: relative; flex: 1; overflow: hidden; background: #0f1114; }
+#cv { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: default; }
+#statusbar { display: flex; align-items: center; gap: 16px; padding: 4px 12px; background: #1b2129; border-top: 1px solid #2c3543; font-size: 12px; }
+#sb-msg { color: #6cc6a0; }

@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="ko"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>균열 어노테이터 (배포용) · 폴더 선택</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="style.css?v=5">
+</head><body>
+<!-- ── 상단 바 ── -->
+<div id="topbar">
+  <button id="btn-open" title="SUPR 촬영(섹션) 폴더 선택">📂 섹션 폴더 열기</button>
+  <span id="sec-info" class="muted">폴더를 선택하세요 (…\동\세션\<b>DJI_..._SUPR</b>)</span>
+  <span class="grow"></span>
+  <div id="viewtoggle" hidden>
+    <button id="vm-overlay" class="vmbtn on">🗺️ 전경격자</button>
+    <button id="vm-gallery" class="vmbtn">🖼️ 이미지나열</button>
+  </div>
+  <span id="legend" class="muted" hidden><span style="color:#9aa2ae">■</span>미작업 <span style="color:#3ecf6a">■</span>균열 <span style="color:#f2c94c">■</span>검토완료(무라벨)</span>
+  <span id="save-state" class="muted"></span>
+</div>
+
+<!-- ── 탐색(전경격자/갤러리) ── -->
+<div id="nav">
+  <div id="nav-empty" class="empty">
+    <div class="big">📂 섹션 폴더를 선택하세요</div>
+    <div class="muted">Chrome 또는 Edge에서 열어주세요. 선택한 폴더의 <b>labels/</b>에 어노테이션이 저장됩니다.<br>
+      예: <code>…\강릉오션시티\107동\DJI_202607141314_013\DJI_20260714131724_0001_SUPR</code></div>
+  </div>
+  <div id="stage" hidden></div>
+</div>
+
+<!-- ── 어노테이션 화면 ── -->
+<div id="anno" hidden>
+  <aside id="side">
+    <div class="side-head">
+      <button id="btn-back">← 격자로</button>
+      <span id="anno-file" class="muted"></span>
+    </div>
+    <div id="classgrp">
+      <div class="cg-label">클래스 (1/2/3)</div>
+      <button class="clsbtn on" data-cls="0">● 균열</button>
+      <button class="clsbtn" data-cls="1">● 창</button>
+      <button class="clsbtn" data-cls="2">● 기타하자</button>
+    </div>
+    <div class="ip-head">라벨 <span id="ip-count">0</span> <span class="muted">· 클릭=위치이동</span></div>
+    <ul id="instlist"></ul>
+    <div class="side-foot">
+      <button id="btn-save">💾 저장 (S)</button>
+      <button id="btn-review" title="라벨 없이 '검토완료(무라벨)'로 표시하고 격자로 — 균열 없는 이미지용">✓ 확인(무라벨)</button>
+      <span id="dirty" class="muted"></span>
+    </div>
+  </aside>
+  <main id="cvwrap">
+    <div id="toolbar">
+      <button class="tool on" data-tool="pan" title="선택/이동 (V)">✥ 선택</button>
+      <button class="tool" data-tool="draw" title="폴리곤 (P)">✎ 폴리곤</button>
+      <button class="tool" data-tool="box" title="박스 드래그→사각 (B)">▭ 박스</button>
+      <button id="btn-vadd" title="점 추가 (Insert)">＋점</button>
+      <button id="btn-del" title="선택 삭제 (Del)">🗑 삭제</button>
+      <button id="btn-fit" title="화면맞춤 (F)">⤢ 맞춤</button>
+      <button id="btn-anno" title="라벨 표시: 채움→외곽선→숨김 (H)">👁 라벨</button>
+      <span class="grow"></span>
+      <span id="hint" class="muted">빈영역 드래그=이동 · 휠=확대 · P 폴리곤 · Enter 완성 · Esc 취소 · H 라벨표시</span>
+    </div>
+    <div id="canvas-wrap"><canvas id="cv"></canvas></div>
+    <div id="statusbar"><span id="sb-file" class="muted"></span><span id="sb-zoom" class="muted"></span><span id="sb-msg"></span></div>
+  </main>
+</div>
+<script src="app.js?v=7"></script>
+</body></html>

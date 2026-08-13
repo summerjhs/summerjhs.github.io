@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>균열 어노테이션 툴 — 실행 설명서</title>
+<style>
+  :root{
+    --paper:#f4f6f8; --card:#ffffff; --ink:#18212e; --ink-soft:#3c4a5c; --muted:#697588;
+    --line:#e3e7ec; --line-strong:#ccd3dd;
+    --green:#2f9e5f; --green-ink:#1f7a47; --green-bg:#e9f6ef;
+    --amber:#bd851b; --amber-bg:#fbf1d9;
+    --gray-chip:#9aa2ae;
+    --teal:#0e9a8c; --blue:#2f6fd0; --purple:#8a45c7;
+    --accent:var(--green);
+    --shadow:0 1px 2px rgba(20,30,45,.05), 0 3px 12px rgba(20,30,45,.06);
+    --radius:11px;
+    --mono:"Consolas","D2Coding","Menlo",monospace;
+    --sans:"Malgun Gothic","맑은 고딕","Apple SD Gothic Neo","Segoe UI",system-ui,sans-serif;
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --paper:#0f1319; --card:#161c24; --ink:#e8eef5; --ink-soft:#b8c2d0; --muted:#8b98a9;
+      --line:#242c37; --line-strong:#333c49;
+      --green:#3ecf6a; --green-ink:#7fe3a0; --green-bg:#12291d;
+      --amber:#f2c94c; --amber-bg:#2a2410;
+      --gray-chip:#8a929e; --teal:#40dcc8; --blue:#5b9bff; --purple:#c77dff;
+      --shadow:0 1px 2px rgba(0,0,0,.32), 0 5px 18px rgba(0,0,0,.30);
+    }
+  }
+  :root[data-theme="dark"]{
+    --paper:#0f1319; --card:#161c24; --ink:#e8eef5; --ink-soft:#b8c2d0; --muted:#8b98a9;
+    --line:#242c37; --line-strong:#333c49;
+    --green:#3ecf6a; --green-ink:#7fe3a0; --green-bg:#12291d;
+    --amber:#f2c94c; --amber-bg:#2a2410;
+    --gray-chip:#8a929e; --teal:#40dcc8; --blue:#5b9bff; --purple:#c77dff;
+    --shadow:0 1px 2px rgba(0,0,0,.32), 0 5px 18px rgba(0,0,0,.30);
+  }
+
+  *{ box-sizing:border-box; }
+  html,body{ margin:0; }
+  body{ background:var(--paper); color:var(--ink); font-family:var(--sans);
+    font-size:15.5px; line-height:1.65; -webkit-font-smoothing:antialiased; }
+  .wrap{ max-width:880px; margin:0 auto; padding:40px 24px 72px; }
+
+  /* 헤더 */
+  .doc-head{ border-bottom:2px solid var(--ink); padding-bottom:22px; margin-bottom:8px; }
+  .kicker{ font-size:12.5px; letter-spacing:.16em; text-transform:uppercase;
+    color:var(--green-ink); font-weight:700; margin:0 0 10px; }
+  h1{ font-size:31px; line-height:1.2; margin:0 0 12px; letter-spacing:-.01em; text-wrap:balance; }
+  .lede{ font-size:16px; color:var(--ink-soft); margin:0; max-width:60ch; }
+  .meta-row{ display:flex; flex-wrap:wrap; gap:8px; margin-top:18px; }
+  .tag{ font-size:12.5px; color:var(--ink-soft); background:var(--card); border:1px solid var(--line-strong);
+    border-radius:999px; padding:3px 11px; }
+  .tag b{ color:var(--ink); }
+
+  /* 섹션 */
+  section{ margin-top:38px; }
+  .sec-h{ display:flex; align-items:center; gap:12px; margin:0 0 16px; }
+  .sec-h .n{ flex:none; width:27px; height:27px; border-radius:7px; background:var(--green);
+    color:#fff; font-size:14px; font-weight:700; display:grid; place-items:center; }
+  @media (prefers-color-scheme:dark){ :root:not([data-theme="light"]) .sec-h .n{ color:#0f1319; } }
+  :root[data-theme="dark"] .sec-h .n{ color:#0f1319; }
+  .sec-h h2{ font-size:20px; margin:0; letter-spacing:-.01em; }
+
+  p{ margin:0 0 12px; }
+  .muted{ color:var(--muted); }
+  a{ color:var(--green-ink); }
+
+  /* 실행 3단계 카드 */
+  .quick{ display:grid; grid-template-columns:repeat(3,1fr); gap:14px; }
+  .qcard{ background:var(--card); border:1px solid var(--line); border-radius:var(--radius);
+    box-shadow:var(--shadow); padding:18px 16px 16px; position:relative; }
+  .qcard .qnum{ font-family:var(--mono); font-size:13px; font-weight:700; color:var(--green-ink);
+    letter-spacing:.05em; }
+  .qcard h3{ font-size:15.5px; margin:6px 0 6px; }
+  .qcard p{ font-size:13.5px; color:var(--ink-soft); margin:0; }
+
+  /* UI 버튼 표기 */
+  .ui{ display:inline-block; font-size:.92em; background:var(--card); border:1px solid var(--line-strong);
+    border-radius:7px; padding:1px 8px; white-space:nowrap; box-shadow:0 1px 0 rgba(20,30,45,.04); }
+  .ui.g{ background:var(--green-bg); border-color:var(--green); color:var(--green-ink); font-weight:600; }
+  kbd{ font-family:var(--mono); font-size:.86em; background:var(--card); color:var(--ink);
+    border:1px solid var(--line-strong); border-bottom-width:2px; border-radius:6px; padding:1px 7px; min-width:20px;
+    display:inline-block; text-align:center; }
+  .path{ font-family:var(--mono); font-size:.86em; background:var(--card); border:1px solid var(--line);
+    border-radius:6px; padding:2px 7px; color:var(--ink-soft); word-break:break-all; }
+
+  /* 콜아웃 */
+  .callout{ border:1px solid var(--line); border-left:4px solid var(--amber); background:var(--amber-bg);
+    border-radius:9px; padding:13px 16px; margin:16px 0; font-size:14px; }
+  .callout.info{ border-left-color:var(--green); background:var(--green-bg); }
+  .callout b{ color:var(--ink); }
+
+  /* 리스트 스텝 */
+  ol.steps{ margin:0; padding:0; list-style:none; counter-reset:s; }
+  ol.steps>li{ counter-increment:s; position:relative; padding:11px 0 11px 40px; border-top:1px solid var(--line); }
+  ol.steps>li:first-child{ border-top:none; }
+  ol.steps>li::before{ content:counter(s); position:absolute; left:0; top:10px; width:25px; height:25px;
+    border-radius:50%; border:1.5px solid var(--green); color:var(--green-ink); font-size:13px; font-weight:700;
+    display:grid; place-items:center; font-family:var(--mono); }
+  ol.steps>li b{ color:var(--ink); }
+
+  /* 범례 / 색 */
+  .legend{ display:flex; flex-wrap:wrap; gap:18px; background:var(--card); border:1px solid var(--line);
+    border-radius:var(--radius); padding:14px 18px; box-shadow:var(--shadow); }
+  .legend .item{ display:flex; align-items:center; gap:9px; font-size:14px; }
+  .sw{ width:15px; height:15px; border-radius:4px; border:2px solid var(--c); background:color-mix(in srgb,var(--c) 18%,transparent); flex:none; }
+  .dot{ width:11px;height:11px;border-radius:3px;background:var(--c);flex:none; }
+
+  /* 표 */
+  .tbl-wrap{ overflow-x:auto; border:1px solid var(--line); border-radius:var(--radius); box-shadow:var(--shadow); }
+  table{ border-collapse:collapse; width:100%; font-size:14px; background:var(--card); }
+  th,td{ text-align:left; padding:10px 14px; border-bottom:1px solid var(--line); vertical-align:top; }
+  thead th{ background:color-mix(in srgb,var(--green) 9%,var(--card)); color:var(--ink);
+    font-size:12.5px; letter-spacing:.02em; }
+  tbody tr:last-child td{ border-bottom:none; }
+  td:first-child{ white-space:nowrap; }
+
+  /* FAQ */
+  .qa{ background:var(--card); border:1px solid var(--line); border-radius:var(--radius);
+    box-shadow:var(--shadow); padding:14px 18px; margin-bottom:10px; }
+  .qa .q{ font-weight:700; margin:0 0 5px; display:flex; gap:8px; }
+  .qa .q .qm{ color:var(--green-ink); font-family:var(--mono); }
+  .qa p{ margin:0; font-size:14px; color:var(--ink-soft); }
+
+  .cols2{ display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+
+  footer{ margin-top:48px; padding-top:18px; border-top:1px solid var(--line);
+    font-size:12.5px; color:var(--muted); display:flex; justify-content:space-between; flex-wrap:wrap; gap:8px; }
+
+  @media (max-width:640px){
+    .quick,.cols2{ grid-template-columns:1fr; }
+    h1{ font-size:26px; }
+    .wrap{ padding:28px 16px 56px; }
+  }
+  @media print{
+    :root{ --paper:#fff; --card:#fff; --shadow:none; }
+    body{ font-size:11.5pt; }
+    .wrap{ max-width:none; padding:0; }
+    .qcard,.qa,.legend,.tbl-wrap,section{ break-inside:avoid; }
+    .callout{ break-inside:avoid; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="doc-head">
+    <p class="kicker">외벽 균열 어노테이션 · 외주 작업 안내</p>
+    <h1>균열 어노테이션 툴 — 실행 설명서</h1>
+    <p class="lede">드론으로 촬영한 아파트 외벽 이미지에서 <b>균열·창·기타하자</b>를 표시하는 작업 툴입니다.
+      별도 설치 없이 브라우저에서 바로 동작하며, 작업 결과는 폴더 안에 자동 저장됩니다.</p>
+    <div class="meta-row">
+      <span class="tag">필요 브라우저 <b>Chrome / Edge</b></span>
+      <span class="tag">운영체제 <b>Windows</b></span>
+      <span class="tag">설치 <b>불필요</b></span>
+      <span class="tag">인터넷 <b>불필요</b></span>
+    </div>
+  </header>
+
+  <!-- 1. 준비물 -->
+  <section>
+    <div class="sec-h"><span class="n">1</span><h2>준비물</h2></div>
+    <ol class="steps">
+      <li><b>Chrome 또는 Edge 브라우저</b> — 다른 브라우저(Firefox·Safari 등)는 폴더 저장 기능을 지원하지 않습니다.</li>
+      <li><b>받은 압축파일</b> <span class="path">균열어노테이터_배포.zip</span> — 이 툴 프로그램입니다.</li>
+      <li><b>배정받은 섹션 폴더</b> — 이름이 <span class="path">…_SUPR</span> 로 끝나는 촬영 폴더.
+        안에 <span class="path">*_0000_SUPR.JSON</span>, <span class="path">*_0000_W.JPG</span> 와 여러 장의 이미지가 들어 있습니다.</li>
+    </ol>
+  </section>
+
+  <!-- 2. 실행 3단계 -->
+  <section>
+    <div class="sec-h"><span class="n">2</span><h2>실행 — 3단계</h2></div>
+    <div class="quick">
+      <div class="qcard">
+        <div class="qnum">STEP 01</div>
+        <h3>압축 풀기</h3>
+        <p>받은 <span class="path">.zip</span> 을 마우스 우클릭 → <b>압축 풀기</b>. <span class="path">균열어노테이터</span> 폴더가 생깁니다.</p>
+      </div>
+      <div class="qcard">
+        <div class="qnum">STEP 02</div>
+        <h3>start.bat 더블클릭</h3>
+        <p>폴더 안 <span class="ui">start.bat</span> 실행. 검은 창이 뜨고 잠시 후 브라우저가 자동으로 열립니다.</p>
+      </div>
+      <div class="qcard">
+        <div class="qnum">STEP 03</div>
+        <h3>섹션 폴더 열기</h3>
+        <p>상단 <span class="ui g">📂 섹션 폴더 열기</span> → 배정받은 폴더 선택 → 권한 팝업 <b>“편집 허용”</b>.</p>
+      </div>
+    </div>
+    <div class="callout">
+      <b>⚠ 알아두세요.</b>
+      브라우저가 자동으로 안 열리면 주소창에 <span class="path">http://localhost:8796</span> 를 직접 입력하세요.
+      “이 앱이 차단되었습니다” 경고가 뜨면 <b>추가 정보 → 실행</b>을 누르면 됩니다.
+      검은 창은 작업하는 동안 <b>계속 켜 두세요</b>(닫으면 툴이 종료됩니다).
+    </div>
+    <div class="callout info">
+      <b>✔ 저장 위치.</b>
+      작업 결과는 선택한 <b>섹션 폴더 안 <span class="path">labels/</span> 폴더</b>에 자동으로 저장됩니다.
+      다음에 같은 폴더를 다시 열면 이어서 작업할 수 있습니다.
+    </div>
+  </section>
+
+  <!-- 3. 화면 보기 -->
+  <section>
+    <div class="sec-h"><span class="n">3</span><h2>화면 보기 &amp; 격자 색</h2></div>
+    <p>폴더를 열면 상단에서 두 가지 보기를 전환할 수 있습니다 —
+      <span class="ui">🗺️ 전경격자</span>(전체 벽면 위에 격자 표시) ·
+      <span class="ui">🖼️ 이미지나열</span>(썸네일 목록). 각 칸(이미지)의 <b>색으로 작업 상태</b>를 알 수 있습니다.</p>
+    <div class="legend">
+      <div class="item"><span class="sw" style="--c:var(--gray-chip)"></span><b>회색</b> · 미작업</div>
+      <div class="item"><span class="sw" style="--c:var(--green)"></span><b>초록</b> · 균열·창·기타 라벨 있음</div>
+      <div class="item"><span class="sw" style="--c:var(--amber)"></span><b>노랑</b> · 검토완료(라벨 없음)</div>
+    </div>
+    <p class="muted" style="margin-top:12px">목표: 모든 칸을 <b>초록</b>(라벨 그림) 또는 <b>노랑</b>(라벨 없음 확인)으로 만들면 그 섹션 작업 완료입니다.</p>
+  </section>
+
+  <!-- 4. 어노테이션 방법 -->
+  <section>
+    <div class="sec-h"><span class="n">4</span><h2>어노테이션 방법</h2></div>
+    <ol class="steps">
+      <li>격자/썸네일에서 <b>칸을 클릭</b>하면 편집 화면이 열립니다.</li>
+      <li>왼쪽에서 <b>클래스</b>를 고릅니다 —
+        <span class="ui" style="color:var(--teal)">● 균열</span>(<kbd>1</kbd>)
+        <span class="ui" style="color:var(--blue)">● 창</span>(<kbd>2</kbd>)
+        <span class="ui" style="color:var(--purple)">● 기타하자</span>(<kbd>3</kbd>).</li>
+      <li><b>폴리곤</b> <kbd>P</kbd>: 대상 외곽을 따라 클릭해 점을 찍고, <kbd>Enter</kbd> 또는 <b>더블클릭</b>으로 완성합니다.
+        가늘고 긴 균열은 외곽선을 따라 여러 점으로 감싸면 됩니다.</li>
+      <li><b>박스</b> <kbd>B</kbd>: 드래그해서 사각형으로 표시(창 등 네모난 대상에 편리).</li>
+      <li>수정: 점을 <b>드래그</b>해 이동, <kbd>Insert</kbd> 또는 <span class="ui">＋점</span>으로 점 추가,
+        점/객체 선택 후 <kbd>Del</kbd> 삭제. 왼쪽 <b>라벨 리스트</b>에서 항목 클릭=그 위치로 이동, <b>✕</b>=삭제.</li>
+      <li>화면 조작: <b>빈 영역 드래그</b>=화면 이동, <b>마우스 휠</b>=확대/축소, <kbd>F</kbd>=화면 맞춤.</li>
+      <li>라벨이 원본을 가려 잘 안 보일 때 <span class="ui">👁 라벨</span> 또는 <kbd>H</kbd> —
+        <b>채움 → 외곽선만 → 숨김</b> 순으로 전환됩니다(원본 균열 확인용).</li>
+    </ol>
+  </section>
+
+  <!-- 5. 저장 & 검토완료 -->
+  <section>
+    <div class="sec-h"><span class="n">5</span><h2>저장 &amp; “확인(무라벨)”</h2></div>
+    <div class="cols2">
+      <div class="qa">
+        <p class="q"><span class="qm">▸</span>라벨을 그린 이미지</p>
+        <p><span class="ui g">💾 저장</span> 또는 <kbd>S</kbd> 로 저장 → 격자에서 <b>초록</b>으로 표시됩니다.</p>
+      </div>
+      <div class="qa">
+        <p class="q"><span class="qm">▸</span>균열이 없는 이미지</p>
+        <p>그리지 말고 <span class="ui">✓ 확인(무라벨)</span> 클릭 → <b>노랑(검토완료)</b>.
+          격자에서 칸을 <b>우클릭</b>해도 토글됩니다.</p>
+      </div>
+    </div>
+    <div class="callout info"><b>중요.</b> 균열이 없어도 “확인(무라벨)”로 <b>검토했음을 꼭 표시</b>해 주세요.
+      회색(미작업)으로 남아 있으면 아직 안 본 이미지로 처리됩니다.</div>
+  </section>
+
+  <!-- 6. 단축키 -->
+  <section>
+    <div class="sec-h"><span class="n">6</span><h2>단축키 요약</h2></div>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>키</th><th>기능</th><th>키</th><th>기능</th></tr></thead>
+        <tbody>
+          <tr><td><kbd>V</kbd></td><td>선택/이동</td><td><kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd></td><td>균열 / 창 / 기타하자</td></tr>
+          <tr><td><kbd>P</kbd></td><td>폴리곤 그리기</td><td><kbd>Enter</kbd></td><td>폴리곤 완성</td></tr>
+          <tr><td><kbd>B</kbd></td><td>박스 그리기</td><td><kbd>Esc</kbd></td><td>그리기 취소 / 선택 해제</td></tr>
+          <tr><td><kbd>Insert</kbd></td><td>점 추가</td><td><kbd>Del</kbd></td><td>점 · 객체 삭제</td></tr>
+          <tr><td><kbd>F</kbd></td><td>화면 맞춤</td><td>휠</td><td>확대 / 축소</td></tr>
+          <tr><td><kbd>H</kbd></td><td>라벨 표시(채움/외곽선/숨김)</td><td><kbd>S</kbd></td><td>저장</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- 7. 결과 회신 -->
+  <section>
+    <div class="sec-h"><span class="n">7</span><h2>결과 회신</h2></div>
+    <p>작업이 끝나면 <b>섹션 폴더 안에 생긴 <span class="path">labels/</span> 폴더</b>(또는 섹션 폴더 전체)를
+      압축해서 담당자에게 회신해 주세요. 폴더 이름(<span class="path">…_SUPR</span>)은 그대로 두시면 됩니다.</p>
+    <div class="callout info"><b>회신 전 확인.</b> 격자에 <b>회색(미작업) 칸이 없는지</b> 한 번 더 살펴봐 주세요 — 모두 초록/노랑이면 완료입니다.</div>
+  </section>
+
+  <!-- 8. 문제 해결 -->
+  <section>
+    <div class="sec-h"><span class="n">8</span><h2>문제 해결 (자주 묻는 질문)</h2></div>
+
+    <div class="qa">
+      <p class="q"><span class="qm">Q</span>이미지가 안 보여요.</p>
+      <p>반드시 <b>start.bat 으로 실행</b>해야 합니다. <span class="path">index.html</span> 을 직접 더블클릭하면(file://) 폴더 기능이 막혀 이미지가 나오지 않습니다.
+        <b>Ctrl+Shift+R</b> 로 새로고침도 시도해 보세요.</p>
+    </div>
+    <div class="qa">
+      <p class="q"><span class="qm">Q</span>“섹션 폴더 열기”를 눌러도 반응이 없어요.</p>
+      <p><b>Chrome 또는 Edge</b> 인지 확인하세요. 폴더 선택 후 뜨는 권한 팝업에서 <b>“편집 허용”</b>을 눌러야 합니다.</p>
+    </div>
+    <div class="qa">
+      <p class="q"><span class="qm">Q</span>저장이 안 돼요.</p>
+      <p>폴더 권한을 <b>“편집 허용”</b>으로 허용했는지 확인하세요. 허용해야 <span class="path">labels/</span> 폴더에 결과를 쓸 수 있습니다.</p>
+    </div>
+    <div class="qa">
+      <p class="q"><span class="qm">Q</span>“이 앱이 차단되었습니다” 경고가 떠요.</p>
+      <p>Windows 기본 기능만 사용하는 안전한 프로그램입니다. <b>추가 정보 → 실행</b>을 누르면 됩니다.</p>
+    </div>
+    <div class="qa">
+      <p class="q"><span class="qm">Q</span>확대했는데 다른 부분을 못 봐요.</p>
+      <p>확대 상태에서 <b>빈 영역을 드래그</b>하면 화면이 이동합니다. <kbd>F</kbd> 로 전체 화면에 맞출 수 있습니다.</p>
+    </div>
+  </section>
+
+  <footer>
+    <span>균열 어노테이션 툴 · 실행 설명서</span>
+    <span>문의: 배포 담당자</span>
+  </footer>
+
+</div>
+</body>
+</html>
