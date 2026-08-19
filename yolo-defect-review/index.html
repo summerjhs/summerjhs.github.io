@@ -96,6 +96,10 @@
                     padding:5px 8px;border-radius:8px;cursor:pointer;font-size:12px}
   #errpanel .ep-cls:hover{border-color:var(--accent)}
   #errpanel .ep-cls.on{background:var(--blue-2);border-color:var(--blue-2);color:var(--text);font-weight:600}
+  #errpanel .ep-chg{background:var(--panel2);border:1px solid var(--border);color:var(--text);
+                    padding:5px 8px;border-radius:8px;cursor:pointer;font-size:12px}
+  #errpanel .ep-chg:hover{border-color:var(--accent)}
+  #errpanel .ep-chg.on{background:var(--blue-1);border-color:var(--blue-2);color:var(--text);font-weight:600;cursor:default}
   #errpanel .ep-refs{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px}
   #errpanel .ep-ref{display:flex;flex-direction:column;align-items:center;gap:3px;width:82px;
                     background:var(--panel2);border:1px solid var(--border);color:var(--muted);
@@ -193,6 +197,7 @@
     <label class="muted"><input type="checkbox" id="guideCursor"> 5px 커서</label>
     <span class="muted">표시 토글 <kbd>H</kbd></span>
     <button class="btn" id="scanTiny" title="두 변 모두 5px 미만인 박스 검사·삭제 (한 변이라도 5px 이상이면 제외)">🔎 5px 검사·정리</button>
+    <button class="btn" id="exportLabels" title="클래스 수정·박스 삭제로 변경된 라벨(.txt)을 ZIP으로 저장">💾 수정 라벨 저장</button>
     <button class="btn" id="exportPptx" title="오류가 기록된 이미지를 PPTX로 내보내기">⬇ 오류 PPTX</button>
     <button class="btn" id="clearErrors" title="기록된 모든 오류 삭제">🗑 오류 전체 삭제</button>
     <input type="search" id="q" placeholder="이미지 이름 검색…" autocomplete="off">
@@ -837,6 +842,15 @@ function clearError(base){
   saveErrors(); renderErrPanel(); drawLightbox();
 }
 function clsName(id){ return state.names[id]!=null ? state.names[id] : ('class '+id); }
+// 박스의 클래스만 실제로 변경 (크기·좌표 유지). raw의 첫 토큰만 교체해 형식 보존.
+function changeBoxClass(base, idx, newCls){
+  const boxes=state.parsed.get(base); const b=boxes&&boxes[idx]; if(!b || b.cls===newCls) return;
+  b.cls=newCls;
+  if(b.raw!=null) b.raw=b.raw.replace(/^(﻿?\s*)\S+/, `$1${newCls}`);   // 맨 앞 클래스 토큰만 교체
+  state.classSet.add(newCls);
+  state.changedLabels.add(base);
+  buildLegend(); renderErrPanel(); drawLightbox();
+}
 // 이웃 이미지 썸네일(박스 포함) 캐시 — 비교 대상 선택 시 이미지를 보며 고를 수 있게
 const thumbCache=new Map();
 async function ensureThumb(base){
@@ -875,6 +889,13 @@ function renderErrPanel(){
     if(sel.mode==='box'){ const b=it.boxes[sel.boxIndex]; selLabel=`Box #${sel.boxIndex+1} · <b>${b.cls}: ${esc(clsName(b.cls))}</b>`; }
     else selLabel=`Point (${Math.round(sel.x*100)}%, ${Math.round(sel.y*100)}%)`;
     html+=`<div class="ep-sel">Selected: ${selLabel}</div>`;
+    if(sel.mode==='box'){   // 클래스 실제 수정 (박스 크기·좌표 유지)
+      const b=it.boxes[sel.boxIndex];
+      const ids=[...new Set([...state.classSet, ...Object.keys(state.names).map(Number)])].sort((a,b)=>a-b);
+      html+=`<div class="ep-corr-label muted">✎ 클래스 수정 (박스 크기 유지):</div><div class="ep-types ep-chg-row">`+
+        ids.map(id=>`<button class="ep-chg${b.cls===id?' on':''}" data-cc="${id}">${id}: ${esc(clsName(id))}</button>`).join('')+`</div>`;
+    }
+    html+=`<div class="ep-corr-label muted" style="border-top:1px solid var(--border);padding-top:8px">오류 체크:</div>`;
     html+=`<div class="ep-types">`+ERR_TYPES.map(t=>`<button class="ep-type${e&&e.type===t?' on':''}" data-t="${esc(t)}">${t}</button>`).join('')+`</div>`;
     if(e && needsClass(e.type)){   // 정답 클래스 선택
       const ids=[...new Set([...state.classSet, ...Object.keys(state.names).map(Number)])].sort((a,b)=>a-b);
@@ -909,6 +930,7 @@ function renderErrPanel(){
   }
   p.innerHTML=html;
   p.querySelectorAll('.ep-type').forEach(btn=>btn.onclick=()=>setError(base, btn.dataset.t));
+  p.querySelectorAll('.ep-chg').forEach(btn=>btn.onclick=()=>{ if(sel&&sel.mode==='box') changeBoxClass(base, sel.boxIndex, +btn.dataset.cc); });
   p.querySelectorAll('.ep-cls').forEach(btn=>btn.onclick=()=>setCorrect(base, +btn.dataset.c));
   p.querySelectorAll('.ep-ref').forEach(btn=>btn.onclick=()=>toggleRef(base, btn.dataset.r));
   p.querySelectorAll('.ep-thumb').forEach(img=>{
@@ -1304,7 +1326,7 @@ function boxLine(b){
 }
 function exportCleanedLabels(){
   const set=state.changedLabels;
-  if(!set || !set.size){ alert('삭제로 변경된 라벨이 없습니다.'); return; }
+  if(!set || !set.size){ alert('변경된 라벨이 없습니다.\n(클래스 수정 또는 작은 박스 삭제 후 저장하세요.)'); return; }
   const entries=[];
   for(const base of set){
     const boxes=state.parsed.get(base)||[];
@@ -1317,7 +1339,7 @@ function exportCleanedLabels(){
   const a=document.createElement('a'); a.href=url; a.download='labels_cleaned.zip';
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(()=>URL.revokeObjectURL(url), 2000);
-  alert(`변경된 라벨 ${entries.length}개를 labels_cleaned.zip으로 내보냈습니다.\n원본 라벨을 이 파일들로 교체하세요.`);
+  alert(`변경된 라벨 ${entries.length}개를 labels_cleaned.zip으로 내보냈습니다.\n원본 라벨을 이 파일들로 교체하세요. (클래스 수정·박스 삭제 반영)`);
 }
 // ---- 모달 ----
 function openTiny(){ $('tinymodal').classList.add('on'); renderTinyBody(); syncTinyButtons(); }
@@ -1354,6 +1376,7 @@ $('fErr').addEventListener('change', async ()=>{
 $('showTiny').addEventListener('change',e=>{ state.showTiny=e.target.checked; redrawAll(); });
 $('guideCursor').addEventListener('change',e=>{ state.showGuide=e.target.checked; updateGuide(); if(lastMouse && $('lb').classList.contains('on')) drawLoupe(); });
 $('scanTiny').addEventListener('click', openTiny);
+$('exportLabels').addEventListener('click', exportCleanedLabels);
 $('tinymodal').querySelector('.tm-close').addEventListener('click', closeTiny);
 $('tinymodal').addEventListener('click', e=>{ if(e.target.id==='tinymodal') closeTiny(); });
 $('tmScan').addEventListener('click', async ()=>{
