@@ -139,6 +139,20 @@
   #tinymodal .tm-close{position:absolute;top:12px;right:14px;background:none;border:none;color:var(--muted);font-size:20px;cursor:pointer}
   #tmDelete:not([disabled]){background:#f7dfe0;border-color:#e2b8bb;color:#8a1f1f;font-weight:600}
   #tmDelete:not([disabled]):hover{background:#f2c9cc}
+  /* 통계 모달 (작은박스 모달과 동일 스타일) */
+  #statsmodal{position:fixed;inset:0;background:rgba(18,28,46,.5);display:none;z-index:60;
+              align-items:center;justify-content:center;padding:20px}
+  #statsmodal.on{display:flex}
+  #statsmodal h3{font-size:16px;font-weight:650;margin-bottom:12px}
+  #statsmodal .st-h{font-weight:650;margin:16px 0 6px}
+  #statsmodal .st-h:first-child{margin-top:0}
+  #statsmodal .st-kpis{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:6px}
+  #statsmodal .st-kpi{flex:1 1 120px;background:var(--panel2);border:1px solid var(--border);border-radius:10px;padding:10px 12px}
+  #statsmodal .st-kpi .v{font-size:20px;font-weight:700;font-variant-numeric:tabular-nums}
+  #statsmodal .st-kpi .l{font-size:11px;color:var(--muted)}
+  #statsmodal .st-bar{position:relative;background:var(--panel2);border-radius:6px;height:20px;overflow:hidden}
+  #statsmodal .st-bar > span{position:absolute;left:0;top:0;bottom:0;border-radius:6px}
+  #statsmodal td .sw{display:inline-block;width:11px;height:11px;border-radius:3px;vertical-align:-1px;margin-right:6px}
 </style>
 </head>
 <body>
@@ -157,6 +171,9 @@
     <span class="pill stat" id="sTotal">이미지 0</span>
     <span class="pill stat" id="sLabeled">라벨 0</span>
     <span class="pill stat" id="sBoxes">박스 0</span>
+    <span class="pill stat" id="sErr" title="오류 체크 현황">오류 0</span>
+    <label class="muted">클래스
+      <select id="fClass"><option value="all">전체</option></select></label>
     <label class="muted">보기
       <select id="fMode">
         <option value="all">전체</option>
@@ -197,6 +214,7 @@
     <label class="muted"><input type="checkbox" id="guideCursor"> 5px 커서</label>
     <span class="muted">표시 토글 <kbd>H</kbd></span>
     <button class="btn" id="scanTiny" title="두 변 모두 5px 미만인 박스 검사·삭제 (한 변이라도 5px 이상이면 제외)">🔎 5px 검사·정리</button>
+    <button class="btn" id="statsBtn" title="라벨·오류 통계 보기">📊 통계</button>
     <button class="btn" id="exportLabels" title="클래스 수정·박스 삭제로 변경된 라벨(.txt)을 ZIP으로 저장">💾 수정 라벨 저장</button>
     <button class="btn" id="exportPptx" title="오류가 기록된 이미지를 PPTX로 내보내기">⬇ 오류 PPTX</button>
     <button class="btn" id="clearErrors" title="기록된 모든 오류 삭제">🗑 오류 전체 삭제</button>
@@ -235,9 +253,17 @@
     <div id="tmBody" class="tm-body">여기에 결과가 표시됩니다.</div>
     <div class="tm-actions">
       <button class="btn" id="tmScan">전체 스캔</button>
-      <button class="btn" id="tmDelete" disabled>두 변 모두 ≤5px 박스 삭제</button>
+      <button class="btn" id="tmDelete" disabled>두 변 모두 5px 미만 박스 삭제</button>
       <button class="btn" id="tmExport" disabled>정리된 라벨 ZIP 내보내기</button>
     </div>
+  </div>
+</div>
+
+<div id="statsmodal">
+  <div class="tm-card">
+    <button class="tm-close" title="닫기">✕</button>
+    <h3>라벨 · 오류 통계</h3>
+    <div id="stBody" class="tm-body">여기에 통계가 표시됩니다.</div>
   </div>
 </div>
 
@@ -294,6 +320,7 @@ function saveErrors(){
   const o={};
   for(const [b,arr] of state.errors){ if(arr&&arr.length) o[b]=arr; }
   try{ localStorage.setItem(ERR_KEY, JSON.stringify(o)); }catch(e){}
+  if(typeof updateErrStat==='function') updateErrStat();   // 헤더 오류 현황 갱신
 }
 const cnum = n => n<=20 ? String.fromCharCode(0x2460+n-1) : '('+n+')';   // 원문자 ①②…
 const xmlEsc = s => String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&apos;'}[c]));
@@ -428,6 +455,8 @@ async function refresh(){
 
 function applyFilterSort(){
   const mode=$('fMode').value, sort=$('fSort').value, errMode=$('fErr').value;
+  const clsSel=$('fClass').value;   // 클래스 필터: 선택 클래스가 있는 이미지만
+  const clsFilter = clsSel==='all' ? null : +clsSel;
   // 공백으로 나눈 여러 단어를 모두 포함하는 이름만 통과 (대소문자 무시)
   const terms=$('q').value.toLowerCase().split(/\s+/).filter(Boolean);
   state.terms=terms;
@@ -437,6 +466,7 @@ function applyFilterSort(){
     const count = boxes.length;
     if(mode==='labeled' && count===0) continue;
     if(mode==='empty' && count>0) continue;
+    if(clsFilter!=null && !boxes.some(b=>b.cls===clsFilter)) continue;   // 선택 클래스 포함 이미지만
     // 오류 필터: 있음/없음/작은박스/특정 종류
     if(errMode!=='all'){
       if(errMode==='tiny5'){ if(!state.tinyBases.has(base)) continue; }
@@ -497,6 +527,7 @@ function updateStats(){
   else if(matched && !boxes) msg='※ 매칭은 됐지만 박스가 0개입니다. 라벨 파일 내용 형식을 확인하세요.';
   else msg = missImgs? `※ 이미지 없는 라벨 ${missImgs}개` : '폴더는 같아도 되고 달라도 됩니다.';
   $('hint').textContent = msg;
+  updateErrStat();
 }
 
 function buildLegend(){
@@ -510,6 +541,45 @@ function buildLegend(){
     el.onclick=()=>{ state.classOff.has(id)?state.classOff.delete(id):state.classOff.add(id); buildLegend(); renderPage(); if($('lb').classList.contains('on')) drawLightbox(); };
     lg.appendChild(el);
   }
+  buildClassFilter(ids);
+}
+// 클래스 필터 드롭다운 채우기(선택 유지)
+function buildClassFilter(ids){
+  const sel=$('fClass'); if(!sel) return;
+  const cur=sel.value;
+  sel.innerHTML='<option value="all">전체</option>'+ids.map(id=>`<option value="${id}">${id}: ${clsName(id)}</option>`).join('');
+  if([...sel.options].some(o=>o.value===cur)) sel.value=cur;
+}
+function todayYMD(){ const d=new Date(), p=n=>String(n).padStart(2,'0'); return String(d.getFullYear()).slice(2)+p(d.getMonth()+1)+p(d.getDate()); }
+
+// ---- 통계 집계 ----
+function labelStats(){   // 라벨 있는 이미지 기준
+  let labeledImages=0, totalBoxes=0; const perClass={};
+  for(const [base] of state.labels){
+    if(!state.images.has(base)) continue;
+    labeledImages++;
+    for(const b of (state.parsed.get(base)||[])){ totalBoxes++; perClass[b.cls]=(perClass[b.cls]||0)+1; }
+  }
+  return {labeledImages, totalBoxes, avg: labeledImages? totalBoxes/labeledImages : 0, perClass};
+}
+function errorStats(){   // 오류 노트 현황
+  let totalErrors=0, boxErrors=0, pointErrors=0, erroredImages=0, boxesInErrored=0;
+  for(const [base, arr] of state.errors){
+    if(!arr||!arr.length) continue;
+    erroredImages++; totalErrors+=arr.length;
+    for(const e of arr){ if(e.kind==='box') boxErrors++; else pointErrors++; }
+    boxesInErrored += (state.parsed.get(base)||[]).length;
+  }
+  return {totalErrors, boxErrors, pointErrors, erroredImages, boxesInErrored,
+          ratio: boxesInErrored? boxErrors/boxesInErrored : 0};
+}
+// 헤더 오류 현황 pill 갱신
+function updateErrStat(){
+  const el=$('sErr'); if(!el) return;
+  const s=errorStats();
+  el.textContent = s.totalErrors
+    ? `오류 ${s.totalErrors} · 객체 ${s.boxErrors}/${s.boxesInErrored} (${Math.round(s.ratio*100)}%)`
+    : '오류 0';
 }
 
 // 박스(또는 폴리곤)의 픽셀 바운딩 박스
@@ -1233,7 +1303,7 @@ async function exportPptx(){
 
   const blob=zipStore(entries);
   const url=URL.createObjectURL(blob);
-  const a=document.createElement('a'); a.href=url; a.download='YOLO_오류리포트.pptx';
+  const a=document.createElement('a'); a.href=url; a.download=`피드백_${todayYMD()}.pptx`;
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(()=>URL.revokeObjectURL(url), 2000);
   btn.disabled=false; btn.textContent=old;
@@ -1363,7 +1433,44 @@ function renderTinyBody(msg){
   <div class="muted" style="margin-top:10px">· 강조해서 보려면 상단 <b>작은박스 5px</b> 체크 또는 오류 필터의 <b>두 변&lt;5px 박스 있음</b>을 사용하세요.<br>· 삭제는 메모리에서 이뤄지며, <b>정리된 라벨 ZIP 내보내기</b>로 저장해 원본을 교체하세요.</div>`;
 }
 
+// ---- 통계 모달 ----
+function openStats(){ $('statsmodal').classList.add('on'); renderStats(); }
+function closeStats(){ $('statsmodal').classList.remove('on'); }
+function renderStats(){
+  const el=$('stBody'); if(!el) return;
+  if(!state.images.size){ el.innerHTML='<span class="muted">먼저 이미지·라벨 폴더를 선택하세요.</span>'; return; }
+  const L=labelStats(), E=errorStats();
+  const ids=[...new Set([...state.classSet, ...Object.keys(L.perClass).map(Number)])].sort((a,b)=>a-b);
+  const maxC=Math.max(1, ...ids.map(id=>L.perClass[id]||0));
+  const rows=ids.map(id=>{
+    const c=L.perClass[id]||0, pct=L.totalBoxes? (c/L.totalBoxes*100):0;
+    return `<tr>
+      <td><span class="sw" style="background:${colorFor(id)}"></span>${id}: ${esc(clsName(id))}</td>
+      <td style="width:45%"><div class="st-bar"><span style="width:${Math.round(c/maxC*100)}%;background:${colorFor(id)}"></span></div></td>
+      <td class="num">${c}</td><td class="num muted">${pct.toFixed(1)}%</td></tr>`;
+  }).join('');
+  el.innerHTML=`
+    <div class="st-h">라벨 통계 (라벨 있는 이미지 기준)</div>
+    <div class="st-kpis">
+      <div class="st-kpi"><div class="v">${L.labeledImages}</div><div class="l">라벨 이미지</div></div>
+      <div class="st-kpi"><div class="v">${L.totalBoxes}</div><div class="l">전체 객체</div></div>
+      <div class="st-kpi"><div class="v">${L.avg.toFixed(2)}</div><div class="l">이미지당 평균 객체</div></div>
+    </div>
+    <table><tr><td class="muted">클래스</td><td></td><td class="num muted">객체</td><td class="num muted">비율</td></tr>${rows}</table>
+    <div class="st-h">오류 통계</div>
+    <div class="st-kpis">
+      <div class="st-kpi"><div class="v">${E.totalErrors}</div><div class="l">오류 노트(박스 ${E.boxErrors}·지점 ${E.pointErrors})</div></div>
+      <div class="st-kpi"><div class="v">${E.erroredImages}</div><div class="l">오류 노트 이미지</div></div>
+      <div class="st-kpi"><div class="v">${Math.round(E.ratio*100)}%</div><div class="l">오류 객체 비율 (${E.boxErrors}/${E.boxesInErrored})</div></div>
+    </div>
+    <div class="muted" style="margin-top:6px">· 오류 객체 비율 = 오류 노트한 이미지들의 전체 객체 수 대비 오류 체크한(박스) 객체 수.</div>`;
+}
+
 // ---- controls ----
+$('statsBtn').addEventListener('click', openStats);
+$('statsmodal').querySelector('.tm-close').addEventListener('click', closeStats);
+$('statsmodal').addEventListener('click', e=>{ if(e.target.id==='statsmodal') closeStats(); });
+$('fClass').addEventListener('change',()=>{applyFilterSort();state.page=0;renderPage();});
 ['fMode','fSort'].forEach(id=>$(id).addEventListener('change',()=>{applyFilterSort();state.page=0;renderPage();}));
 $('fErr').addEventListener('change', async ()=>{
   if($('fErr').value==='tiny5' && !state.tinyScanned){
