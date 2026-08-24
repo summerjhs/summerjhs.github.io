@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>통합 어노테이션 검수 툴</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header>
+  <div class="row">
+    <h1>통합 어노테이션 검수 툴<span class="sub">BBox · Polygon · Polyline · Point</span></h1>
+    <label class="file btn primary"><span>① 이미지 폴더</span>
+      <input type="file" id="imgIn" webkitdirectory directory multiple></label>
+    <label class="file btn"><span>② 라벨 폴더</span>
+      <input type="file" id="lblIn" webkitdirectory directory multiple></label>
+    <label class="file btn"><span>라벨 파일(COCO 등)</span>
+      <input type="file" id="lblFiles" multiple accept=".txt,.xml,.json"></label>
+    <label class="file btn"><span>클래스 이름(선택)</span>
+      <input type="file" id="clsIn" accept=".txt,.yaml,.yml,.names,.json,.csv"></label>
+    <button class="btn" id="helpBtn" title="지원 포맷·사용법">❔ 도움말</button>
+    <span class="pill stat" id="sTotal">이미지 0</span>
+    <span class="pill stat" id="sMatched">라벨 매칭 0</span>
+    <span class="pill stat" id="sObjs">객체 0</span>
+    <span class="pill stat" id="sErr">오류 0</span>
+    <span class="pill stat" id="sFmt">포맷 –</span>
+    <span class="muted" id="hint">이미지 폴더와 라벨(.txt / .xml / .json)을 선택하세요.</span>
+  </div>
+
+  <div class="row">
+    <div class="seg" id="viewSeg">
+      <button data-v="image" class="on">🖼 이미지 보기</button>
+      <button data-v="object">🔬 객체 모아보기</button>
+    </div>
+    <div class="sep"></div>
+    <label class="muted">클래스
+      <select id="fClass"><option value="all">전체</option></select></label>
+    <label class="muted">라벨
+      <select id="fMode">
+        <option value="all">전체</option>
+        <option value="labeled">라벨 있는 이미지</option>
+        <option value="empty">라벨 없는 이미지</option>
+      </select></label>
+    <label class="muted">유형
+      <select id="fKind"><option value="all">전체</option></select></label>
+    <label class="muted">오류
+      <select id="fErr">
+        <option value="all">전체</option>
+        <option value="has">오류 있음</option>
+        <option value="none">오류 없음</option>
+      </select></label>
+    <label class="muted">정렬
+      <select id="fSort">
+        <option value="name">이름순</option>
+        <option value="objdesc">객체 많은순</option>
+        <option value="objasc">객체 적은순</option>
+        <option value="errdesc">오류 많은순</option>
+      </select></label>
+    <label class="muted">페이지당
+      <select id="perPage">
+        <option>24</option><option selected>60</option><option>120</option><option>240</option>
+      </select></label>
+    <input type="search" id="q" placeholder="이미지 이름 검색…" autocomplete="off">
+    <span class="muted stat" id="qInfo"></span>
+  </div>
+
+  <div class="row">
+    <label class="muted">카드 크기
+      <input type="range" id="cardSize" min="140" max="520" value="300" style="vertical-align:middle;width:80px"></label>
+    <label class="muted">선 굵기
+      <input type="range" id="lineW" min="1" max="8" value="2" step="1" style="vertical-align:middle;width:70px"></label>
+    <label class="muted">라벨 크기
+      <input type="range" id="labelSize" min="0.5" max="3" value="1" step="0.25" style="vertical-align:middle;width:70px"></label>
+    <label class="muted">채우기
+      <input type="range" id="fillA" min="0" max="0.6" value="0.14" step="0.02" style="vertical-align:middle;width:70px"></label>
+    <label class="muted">클래스명
+      <select id="labelMode">
+        <option value="class">클래스당 1회</option>
+        <option value="each">객체마다</option>
+        <option value="off">끄기</option>
+      </select></label>
+    <label class="muted"><input type="checkbox" id="showShapes" checked> 도형</label>
+    <label class="muted"><input type="checkbox" id="showVerts"> 꼭짓점</label>
+    <label class="muted"><input type="checkbox" id="loupeOn" checked> 🔍 돋보기</label>
+    <label class="muted">배율
+      <input type="range" id="loupeZoom" min="2" max="12" value="3" step="1" style="vertical-align:middle;width:70px"><span class="stat" id="loupeZoomV">3×</span></label>
+    <div class="sep"></div>
+    <button class="btn" id="statsBtn" title="클래스·유형·오류 통계">📊 통계</button>
+    <button class="btn" id="exportLabels" title="클래스 수정·객체 삭제가 반영된 라벨 파일 내보내기">💾 수정 라벨 저장</button>
+    <button class="btn" id="exportPptx" title="오류가 기록된 이미지를 PPTX 리포트로">⬇ 오류 PPTX</button>
+    <button class="btn" id="exportCsv" title="오류 목록을 CSV로">⬇ 오류 CSV</button>
+    <button class="btn" id="saveReview" title="검수 기록(오류)을 JSON 파일로 저장">🗂 검수기록 저장</button>
+    <label class="file btn" title="저장했던 검수 기록(JSON) 불러오기"><span>🗂 불러오기</span>
+      <input type="file" id="loadReview" accept=".json"></label>
+    <button class="btn" id="clearErrors" title="기록된 모든 오류 삭제">🗑 오류 전체 삭제</button>
+  </div>
+
+  <div class="legends">
+    <div class="lgset" id="legendCls"></div>
+    <div class="lgset" id="legendKind"></div>
+  </div>
+</header>
+
+<main>
+  <div id="grid"></div>
+  <div id="pager"></div>
+  <div class="empty-state" id="welcome">
+    <b>이미지 폴더</b>와 <b>라벨 폴더/파일</b>을 선택하면 파일명으로 매칭해 시각화합니다.<br>
+    바운딩박스 · 폴리곤 · 폴리라인 · 포인트를 한 화면에서 검수할 수 있습니다.
+    <table>
+      <tr><td><b>YOLO</b> <code>.txt</code></td><td>박스 <code>cls cx cy w h</code> · 폴리곤 <code>cls x1 y1 x2 y2 …</code> (YOLO-seg/OBB)</td></tr>
+      <tr><td><b>Pascal VOC</b> <code>.xml</code></td><td>이미지당 1개 · <code>bndbox</code> / <code>polygon</code></td></tr>
+      <tr><td><b>LabelMe</b> <code>.json</code></td><td>이미지당 1개 · rectangle · polygon · line · linestrip · point · circle</td></tr>
+      <tr><td><b>COCO</b> <code>.json</code></td><td>단일 파일 · bbox + segmentation(폴리곤)</td></tr>
+    </table>
+  </div>
+</main>
+
+<!-- ===== 라이트박스 ===== -->
+<div id="lb">
+  <button class="close" title="닫기 (Esc)">✕</button>
+  <div id="lbmain">
+    <button class="nav prev" title="이전 (←)">‹</button>
+    <button class="nav next" title="다음 (→)">›</button>
+    <div id="lbstage"><canvas id="lbcv"></canvas><canvas id="loupe"></canvas></div>
+    <div id="lbcap"></div>
+    <div id="lbhint">객체 클릭 → 선택 · 빈 곳 <b>더블클릭</b> → 누락 지점 표시 · <b>마우스를 올리면 돋보기</b>(끄기 <kbd>Z</kbd>) · 배율 <kbd>+</kbd><kbd>-</kbd> ·
+      표시 토글 <kbd>H</kbd> · 이동 <kbd>←</kbd><kbd>→</kbd> 또는 <kbd>D</kbd><kbd>F</kbd> · 다음 객체 <kbd>Tab</kbd></div>
+  </div>
+  <div id="side"></div>
+</div>
+
+<!-- ===== 통계 모달 ===== -->
+<div id="statsmodal" class="modal">
+  <div class="tm-card">
+    <button class="tm-close" title="닫기">✕</button>
+    <h3>📊 통계</h3>
+    <div id="stBody" class="tm-body">여기에 통계가 표시됩니다.</div>
+  </div>
+</div>
+
+<!-- ===== 도움말 모달 ===== -->
+<div id="helpmodal" class="modal">
+  <div class="tm-card">
+    <button class="tm-close" title="닫기">✕</button>
+    <h3>❔ 사용법 · 지원 포맷</h3>
+    <div class="tm-body">
+      <div class="st-h">1. 파일 불러오기</div>
+      <b>① 이미지 폴더</b> → 이미지가 든 폴더를 선택합니다.<br>
+      <b>② 라벨 폴더</b> → 라벨(.txt/.xml/.json)이 든 폴더를 통째로 선택합니다.
+      <b>라벨 파일(COCO 등)</b> → COCO JSON 한 개처럼 파일을 직접 고를 때 사용합니다.
+      확장자로 포맷을 자동 판별하며, 이미지와는 <b>확장자를 뺀 파일명</b>으로 매칭합니다
+      (<code>a.jpg ↔ a.txt / a.xml / a.json</code>, <code>a.jpg.txt</code>도 인식).<br>
+      <b>클래스 이름</b> → YOLO처럼 클래스가 숫자인 경우 <code>.txt/.yaml/.json</code>으로 이름을 지정합니다.
+      VOC·LabelMe·COCO는 라벨에 이름이 들어 있어 자동 등록됩니다.
+      <div class="st-h">2. 모아보기 / 필터</div>
+      <b>클래스</b>·<b>유형</b>·<b>라벨 유무</b>·<b>오류</b> 필터로 원하는 대상만 모아 봅니다.
+      범례(색 칩)를 클릭하면 해당 클래스/유형을 화면에서 숨기거나 다시 보여줍니다.<br>
+      <b>🔬 객체 모아보기</b>는 객체 하나하나를 크롭해 카드로 늘어놓아, 같은 클래스끼리 라벨 품질을 비교하기 좋습니다.
+      카드를 클릭하면 원본 이미지의 해당 객체가 선택된 상태로 열립니다.
+      <div class="st-h">3. 검수</div>
+      이미지를 클릭해 확대한 뒤 <b>객체를 클릭</b>하면 오른쪽 패널에서
+      <b>오류 종류</b>를 고르고 <b>메모</b>를 남길 수 있습니다.
+      객체가 없는 곳을 <b>더블클릭</b>하면 그 좌표에 '객체 누락' 지점을 찍습니다.<br>
+      <b>✎ 클래스 수정</b>은 좌표·형상은 그대로 두고 클래스만 바꿉니다. <b>🗑 객체 삭제</b>도 가능합니다.
+      수정한 내용은 <b>💾 수정 라벨 저장</b>으로 원본과 같은 포맷으로 내보냅니다
+      (YOLO·VOC·LabelMe는 ZIP, COCO는 JSON 한 개).
+      <div class="st-h">4. 내보내기</div>
+      <b>오류 PPTX</b> — 오류가 있는 이미지를 슬라이드로 (이미지 + 오류 목록).<br>
+      <b>오류 CSV</b> — 이미지·객체·오류 종류·정답 클래스·메모 표.<br>
+      <b>검수기록 저장/불러오기</b> — 오류 기록을 JSON으로 백업하거나 다른 PC에서 이어서 검수.
+      (기록은 브라우저 localStorage에도 자동 저장됩니다.)
+      <div class="st-h">단축키</div>
+      <kbd>H</kbd> 도형/라벨 표시 토글 · <kbd>Z</kbd> 돋보기 켜기/끄기 · <kbd>+</kbd><kbd>-</kbd> 돋보기 배율 ·
+      <kbd>←</kbd><kbd>→</kbd>/<kbd>D</kbd><kbd>F</kbd> 이전·다음 이미지 · <kbd>Tab</kbd> 다음 객체 ·
+      <kbd>1</kbd>~<kbd>5</kbd> 오류 종류 지정 · <kbd>Del</kbd> 선택 오류 삭제 · <kbd>Esc</kbd> 닫기
+    </div>
+  </div>
+</div>
+
+<script src="parsers.js"></script>
+<script src="render.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
