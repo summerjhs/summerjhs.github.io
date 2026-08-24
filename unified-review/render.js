@@ -21,12 +21,15 @@ const KIND_LABEL = { box:'박스', polygon:'폴리곤', polyline:'폴리라인',
 /* 클래스 색 — 0번 빨강과 헷갈리는 5번만 짙은 네이비로 고정 */
 const COLOR_OVERRIDE = { 5:'#1f3a93' };
 function colorFor(id){
+  /* 라벨 자체에 색이 지정된 포맷(labelit의 extra.color)은 그 색을 그대로 쓴다 */
+  if(CLS.colors && CLS.colors[id]) return CLS.colors[id];
   if(COLOR_OVERRIDE[id]) return COLOR_OVERRIDE[id];
   return `hsl(${(id*67)%360} 100% 58%)`;
 }
 const _txtColCache = new Map();
 function labelTextColor(id){
-  if(_txtColCache.has(id)) return _txtColCache.get(id);
+  const key = id + '|' + colorFor(id);          // 색이 바뀌면 다시 계산
+  if(_txtColCache.has(key)) return _txtColCache.get(key);
   let col = '#fff';
   try{
     const c = document.createElement('canvas'); c.width = c.height = 1;
@@ -34,7 +37,7 @@ function labelTextColor(id){
     const d = x.getImageData(0,0,1,1).data;
     col = (0.299*d[0] + 0.587*d[1] + 0.114*d[2]) > 150 ? '#111827' : '#ffffff';
   }catch(e){}
-  _txtColCache.set(id, col); return col;
+  _txtColCache.set(key, col); return col;
 }
 
 /* ---- 좌표 변환: 정규화(YOLO) ↔ 픽셀 ---- */

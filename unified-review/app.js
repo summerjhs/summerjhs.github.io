@@ -26,6 +26,7 @@ const S = {
   labelit: null,       // {records, file} — labelit.pro 결과(JSONL)
   fmts:   new Set(),
   badFiles: [],        // 형식을 인식하지 못한 라벨 파일 {name, reason}
+  namesFile: null,     // 사용자가 고른 클래스 이름 파일 (라벨을 새로 열어도 유지)
   items: [], objItems: [],
   page: 0, view: 'image',
   errors: new Map(),   // base -> [err]
@@ -54,13 +55,41 @@ function saveErrors(){
 }
 
 /* ========================= 파일 불러오기 ========================= */
+/* 폴더를 새로 열면 '그 폴더만' 보이도록 이전 것은 비운다 */
 $('imgIn').addEventListener('change', async e => {
-  for(const f of e.target.files) if(IMG_EXT.includes(extOf(f.name))) S.images.set(baseOf(f.name), {file:f, name:f.name});
+  const files = [...e.target.files].filter(f => IMG_EXT.includes(extOf(f.name)));
+  if(!files.length){
+    $('hint').textContent = '※ 고른 폴더에서 이미지를 찾지 못했습니다. (jpg·png·bmp·webp·tif)';
+    e.target.value = ''; return;
+  }
+  S.images.clear(); releaseUrls(); thumbCache.clear();
+  for(const f of files) S.images.set(baseOf(f.name), {file:f, name:f.name});
+  if(lbOn()) closeLightbox();
+  S.page = 0;
   await refresh();
+  e.target.value = '';                 // 같은 폴더를 다시 골라도 반응하도록
 });
 $('lblIn').addEventListener('change', e => ingestLabels(e.target.files));
 $('lblFiles').addEventListener('change', e => ingestLabels(e.target.files));
 
+/* 불러온 라벨 상태 전체 비우기 */
+function clearLabels(){
+  S.docs.clear(); S.shapes.clear();
+  S.coco = null; S.labelit = null;
+  S.fmts.clear(); S.badFiles = [];
+  S.changed.clear(); S.cocoChanged = false; S.labelitChanged = false;
+  /* 이전 데이터셋의 클래스 이름·색이 남지 않도록 초기화.
+     사용자가 직접 고른 클래스 이름 파일이 있으면 그것만 다시 적용한다. */
+  CLS.reset();
+  if(S.namesFile) CLS.setNames(S.namesFile);
+  VIEW.classOff.clear(); VIEW.kindOff.clear();
+}
+function confirmDiscardEdits(){
+  const n = S.changed.size;
+  if(!n && !S.cocoChanged && !S.labelitChanged) return true;
+  return confirm(`저장하지 않은 라벨 수정이 있습니다 (이미지 ${n}장).\n` +
+                 `새로 열면 사라집니다. 계속할까요?\n\n[취소]를 누른 뒤 「💾 수정 라벨 저장」으로 내보낼 수 있습니다.`);
+}
 async function ingestLabels(fileList){
   const all = [...fileList];
   const files = all.filter(f => ['txt','xml','json','jsonl','ndjson'].includes(extOf(f.name)));
@@ -70,7 +99,10 @@ async function ingestLabels(fileList){
       : '※ .txt / .xml / .json 라벨 파일을 찾지 못했습니다.';
     return;
   }
-  S.badFiles = [];                      // 인식하지 못한 파일 (이유와 함께 안내)
+  if(!confirmDiscardEdits()) return;
+  clearLabels();                        // 새로 고른 라벨만 보이게 (이전 것은 비움)
+  if(lbOn()) closeLightbox();
+  S.page = 0;
   const CONC = 48;
   for(let i = 0; i < files.length; i += CONC){
     await Promise.all(files.slice(i, i + CONC).map(async f => {
@@ -104,6 +136,7 @@ $('clsIn').addEventListener('change', async e => {
   try{ names = parseNamesFile(await f.text(), f.name); }
   catch(err){ alert('클래스 파일을 읽지 못했습니다: ' + err.message); return; }
   if(!Object.keys(names).length){ alert('클래스 이름을 찾지 못했습니다. 한 줄에 하나씩 적어주세요.'); return; }
+  S.namesFile = names;
   CLS.setNames(names);
   await refresh();
   $('hint').textContent = `클래스 이름 ${Object.keys(names).length}개 적용됨`;
@@ -246,7 +279,11 @@ function updateStats(){
 }
 function updateErrStat(){
   const s = errorStats();
-  $('sErr').textContent = s.total ? `오류 ${s.total} · 이미지 ${s.images}` : '오류 0';
+  const base = s.total ? `오류 ${s.total} · 이미지 ${s.images}` : '오류 0';
+  $('sErr').textContent = base + (s.other ? ` (다른 폴더 ${s.other})` : '');
+  $('sErr').title = s.other
+    ? `지금 열려 있지 않은 이미지의 오류 ${s.other}건도 기록에 남아 있습니다 (이미지 ${s.otherImages}장).`
+    : '';
 }
 
 function classIds(){
@@ -833,9 +870,11 @@ document.addEventListener('keydown', e => {
 /* ========================= 통계 ========================= */
 function errorStats(){
   let total = 0, shapeErr = 0, pointErr = 0, images = 0, objsInErrored = 0;
+  let other = 0, otherImages = 0;       // 지금 열려 있지 않은 이미지의 오류 (기록은 남아 있음)
   const byType = {}, byClass = {};
   for(const [base, arr] of S.errors){
     if(!arr || !arr.length) continue;
+    if(S.images.size && !S.images.has(base)){ other += arr.length; otherImages++; continue; }
     images++; total += arr.length;
     const shapes = shapesOf(base);
     objsInErrored += shapes.length;
@@ -845,7 +884,7 @@ function errorStats(){
       byType[e.type || '(미지정)'] = (byType[e.type || '(미지정)'] || 0) + 1;
     }
   }
-  return {total, shapeErr, pointErr, images, objsInErrored, byType, byClass,
+  return {total, shapeErr, pointErr, images, objsInErrored, byType, byClass, other, otherImages,
           ratio: objsInErrored ? shapeErr / objsInErrored : 0};
 }
 function renderStats(){
@@ -894,7 +933,9 @@ function renderStats(){
       <div class="st-kpi"><div class="v">${Math.round(E.ratio*100)}%</div><div class="l">오류 객체 비율 (${E.shapeErr}/${E.objsInErrored})</div></div>
     </div>
     <table><tr><th>오류 종류</th><th class="num">건수</th><th class="num">비율</th></tr>${typeRows}</table>
-    <div class="muted" style="margin-top:6px">· 오류 객체 비율 = 오류를 기록한 이미지들의 전체 객체 수 대비 오류로 표시한 객체 수.</div>`;
+    <div class="muted" style="margin-top:6px">· 오류 객체 비율 = 오류를 기록한 이미지들의 전체 객체 수 대비 오류로 표시한 객체 수.` +
+      (E.other ? `<br>· 지금 열려 있지 않은 이미지의 오류 <b>${E.other}건</b>(이미지 ${E.otherImages}장)은 집계에서 제외했습니다. 기록은 남아 있습니다.` : '') +
+    `</div>`;
 }
 
 /* ========================= ZIP (무압축) ========================= */
@@ -976,9 +1017,16 @@ function exportLabels(){
 /* ========================= 오류 CSV ========================= */
 function exportCsv(){
   const rows = [['Image','Location','Shape','Current class','Error type','Correct class','Compared with','Note']];
-  const bases = [...S.errors.keys()].filter(b => (S.errors.get(b) || []).length)
-    .sort((a, b) => (S.images.get(a)?.name || a).localeCompare(S.images.get(b)?.name || b));
-  if(!bases.length){ alert('기록된 오류가 없습니다.'); return; }
+  const withErr = [...S.errors.keys()].filter(b => (S.errors.get(b) || []).length);
+  /* 지금 열려 있는 이미지만 (다른 폴더의 기록은 제외하고 안내) */
+  const bases = S.images.size ? withErr.filter(b => S.images.has(b)) : withErr;
+  const skipped = withErr.length - bases.length;
+  bases.sort((a, b) => (S.images.get(a)?.name || a).localeCompare(S.images.get(b)?.name || b));
+  if(!bases.length){
+    alert(skipped ? `지금 열려 있는 이미지에는 오류 기록이 없습니다.\n(다른 폴더 이미지의 기록 ${skipped}장분은 제외됩니다.)`
+                  : '기록된 오류가 없습니다.');
+    return;
+  }
   for(const base of bases){
     const name = S.images.get(base) ? S.images.get(base).name : base;
     const shapes = shapesOf(base);
@@ -998,6 +1046,7 @@ function exportCsv(){
   }
   const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\r\n');
   download(new Blob(['﻿' + csv], {type:'text/csv;charset=utf-8'}), `review_errors_${todayYMD()}.csv`);
+  if(skipped) alert(`현재 폴더에 없는 이미지 ${skipped}장의 오류는 제외했습니다.\n(기록은 남아 있으며, 해당 폴더를 열면 다시 보입니다.)`);
 }
 
 /* ========================= 검수 기록 저장/불러오기 ========================= */

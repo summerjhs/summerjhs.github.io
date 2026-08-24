@@ -16,13 +16,17 @@
 const CLS = {
   names: {},        // id -> name
   idOf: {},         // lowercase name -> id
+  colors: {},       // id -> 지정 색 (labelit의 extra.color 등)
   /* 이름으로 id를 얻는다. 처음 보는 이름이면 비어있는 가장 작은 id를 할당 */
-  register(name){
+  register(name, color){
     const key = String(name).trim().toLowerCase();
-    if(this.idOf[key] != null) return this.idOf[key];
-    let id = 0; while(this.names[id] != null) id++;
-    this.names[id] = String(name).trim();
-    this.idOf[key] = id;
+    let id = this.idOf[key];
+    if(id == null){
+      id = 0; while(this.names[id] != null) id++;
+      this.names[id] = String(name).trim();
+      this.idOf[key] = id;
+    }
+    if(color && /^#[0-9a-f]{3,8}$/i.test(color) && !this.colors[id]) this.colors[id] = color;
     return id;
   },
   /* 숫자 id를 확보한다 (YOLO). 이름이 없으면 'class N' */
@@ -33,10 +37,10 @@ const CLS = {
   nameOf(id){ return this.names[id] != null ? this.names[id] : ('class ' + id); },
   /* 클래스 이름 파일(.txt/.yaml/.json)을 통째로 적용 */
   setNames(obj){
-    this.names = {}; this.idOf = {};
+    this.names = {}; this.idOf = {}; this.colors = {};
     for(const k in obj){ const id = +k; this.names[id] = String(obj[k]); this.idOf[String(obj[k]).toLowerCase()] = id; }
   },
-  reset(){ this.names = {}; this.idOf = {}; }
+  reset(){ this.names = {}; this.idOf = {}; this.colors = {}; }
 };
 
 /* ---- 확장자 / 파일명 유틸 ---- */
@@ -260,6 +264,11 @@ function labelitGroups(rec){
 }
 const LABELIT_NAME_KEYS = ['importData_file_name','file_name','fileName','imagePath','image','filename','name','dataID'];
 function labelitFileName(rec){
+  /* 그룹 안의 sourceValue에 원본 파일명이 들어 있는 형식이 있다 (예: 도장검사지) */
+  for(const gk of labelitGroups(rec)){
+    const sv = rec[gk] && rec[gk].sourceValue;
+    if(typeof sv === 'string' && sv.trim()) return sv.trim();
+  }
   for(const k of LABELIT_NAME_KEYS){ const v = rec[k]; if(typeof v === 'string' && v.trim()) return v.trim(); }
   if(rec.dataID != null) return String(rec.dataID);
   return null;
@@ -278,29 +287,44 @@ function parseJsonLines(text){
 }
 /* info의 assets에서 '라벨을 담고 있는 필드'를 찾아, 값과 필드 설명을 돌려준다 */
 function labelitLabel(val, group){
-  const assetKeys = [];
+  /* info.assets: 필드키 -> {label:'숫자', name:'Multi Select'} — 사람이 읽는 이름을 속성 키로 쓴다 */
+  const assetKeys = [], assetLabel = {};
   for(const inf of (group.info || []))
-    for(const ak in (inf.assets || {})) if(!assetKeys.includes(ak)) assetKeys.push(ak);
+    for(const ak in (inf.assets || {})){
+      if(!assetKeys.includes(ak)) assetKeys.push(ak);
+      const a = inf.assets[ak];
+      if(a && a.label) assetLabel[ak] = String(a.label);
+    }
   const attrs = {};
-  let name = null, field = null;
-  const take = (k, v) => {
-    let txt = null, kind = null;
-    if(typeof v === 'string'){ txt = v.trim(); kind = 'string'; }
-    else if(Array.isArray(v)){ txt = v.map(x => (x && (x.label ?? x.value)) || '').filter(Boolean).join('/'); kind = 'array'; }
-    else if(v && typeof v === 'object' && (v.label != null || v.value != null)){ txt = String(v.label ?? v.value); kind = 'object'; }
-    if(!txt) return;
-    if(name == null){ name = txt; field = {key:k, kind}; } else attrs[k] = txt;
+  let name = null, field = null, color = null;
+  const textOf = v => {
+    if(typeof v === 'string') return {txt:v.trim(), kind:'string'};
+    if(Array.isArray(v)) return {txt: v.map(x => (x && (x.label ?? x.value)) || '').filter(Boolean).join('/'), kind:'array'};
+    if(v && typeof v === 'object' && (v.label != null || v.value != null)) return {txt:String(v.label ?? v.value), kind:'object'};
+    return {txt:null, kind:null};
   };
-  for(const k of assetKeys) if(val[k] != null) take(k, val[k]);
-  if(name == null && val.extra && (val.extra.label || val.extra.value)){
-    name = String(val.extra.label || val.extra.value); field = {key:'extra', kind:'extra'};
+  /* 1순위: 객체 자신의 라벨(extra) — 도장검사지처럼 assets에는 부가 항목만 있는 형식 대응 */
+  const ex = val.extra;
+  if(ex && (ex.label || ex.value)){
+    name = String(ex.label || ex.value).trim();
+    field = {key:'extra', kind:'extra'};
+    if(ex.color) color = String(ex.color);
+  }
+  /* 2순위: info.assets에 정의된 필드 (예: VIN의 label_symbol) */
+  for(const k of assetKeys){
+    if(val[k] == null) continue;
+    const {txt, kind} = textOf(val[k]);
+    if(!txt) continue;
+    if(name == null){ name = txt; field = {key:k, kind}; }
+    else attrs[assetLabel[k] || k] = txt;
   }
   if(name == null && typeof val.label === 'string' && val.label.trim()){
     name = val.label.trim(); field = {key:'label', kind:'string'};
   }
-  if(val.text && String(val.text).trim()) attrs.text = String(val.text).trim();
+  if(val.text && String(val.text).trim() && !Object.values(attrs).includes(String(val.text).trim()))
+    attrs[assetLabel.text || 'text'] = String(val.text).trim();
   if(Array.isArray(val.warnings) && val.warnings.length) attrs.warnings = val.warnings.length;
-  return {name, field, attrs};
+  return {name, field, attrs, color};
 }
 const LABELIT_KIND = { BOX:'box', RBOX:'polygon', POLYGON:'polygon', POLY:'polygon',
                        POLYLINE:'polyline', LINE:'polyline', POINT:'point', DOT:'point', CIRCLE:'circle' };
@@ -312,8 +336,8 @@ function labelitShapes(rec){
     (g.data || []).forEach((d, idx) => {
       const val = d.value || {};
       const ann = String(val.annotation || '').toUpperCase();
-      const {name, field, attrs} = labelitLabel(val, g);
-      const cls = CLS.register(name || ann || 'object');
+      const {name, field, attrs, color} = labelitLabel(val, g);
+      const cls = CLS.register(name || ann || 'object', color);
       const src = {fmt:'labelit', rec, grp:gk, idx, ref:d, field};
       const pts = (val.points || val.point || []).map ? (val.points || []) : [];
       const toXY = p => [ +(p.x ?? p[0]), +(p.y ?? p[1]) ];
