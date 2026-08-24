@@ -23,6 +23,7 @@ const S = {
   docs:   new Map(),   // base -> {fmt, file, text, doc, obj}
   shapes: new Map(),   // base -> Shape[]
   coco:   null,        // {json, file}
+  labelit: null,       // {records, file} — labelit.pro 결과(JSONL)
   fmts:   new Set(),
   items: [], objItems: [],
   page: 0, view: 'image',
@@ -30,6 +31,7 @@ const S = {
   lbIdx: 0, selBase: null, sel: null,
   changed: new Set(),  // 수정(클래스 변경·삭제)된 base
   cocoChanged: false,
+  labelitChanged: false,
   terms: []
 };
 
@@ -59,7 +61,7 @@ $('lblIn').addEventListener('change', e => ingestLabels(e.target.files));
 $('lblFiles').addEventListener('change', e => ingestLabels(e.target.files));
 
 async function ingestLabels(fileList){
-  const files = [...fileList].filter(f => ['txt','xml','json'].includes(extOf(f.name)));
+  const files = [...fileList].filter(f => ['txt','xml','json','jsonl','ndjson'].includes(extOf(f.name)));
   if(!files.length){ $('hint').textContent = '※ .txt / .xml / .json 라벨 파일을 찾지 못했습니다.'; return; }
   const CONC = 48;
   for(let i = 0; i < files.length; i += CONC){
@@ -68,6 +70,11 @@ async function ingestLabels(fileList){
       const r = parseLabelFile(f.name, text);
       if(!r) return;
       if(r.fmt === 'coco-global'){ S.coco = {json:r.json, file:f}; S.fmts.add('coco'); return; }
+      if(r.fmt === 'labelit-global'){
+        if(S.labelit) S.labelit.records = S.labelit.records.concat(r.records);   // 여러 파일 이어붙이기
+        else S.labelit = {records:r.records, file:f};
+        S.fmts.add('labelit'); return;
+      }
       const b = baseOf(f.name);
       S.docs.set(b, {fmt:r.fmt, file:f, text, doc:r.doc, obj:r.obj});
       S.fmts.add(r.fmt);
@@ -99,6 +106,14 @@ function reparseAll(){
     else if(d.fmt === 'labelme'){ const r = parseLabelMe(d.obj); shapes = r.shapes; }
     S.shapes.set(b, shapes);
   }
+  if(S.labelit){
+    const r = parseLabelit(S.labelit.records);
+    for(const [b, arr] of r.byBase){
+      if(!S.shapes.has(b)) S.shapes.set(b, arr);
+      else S.shapes.set(b, S.shapes.get(b).concat(arr));
+      if(!S.docs.has(b)) S.docs.set(b, {fmt:'labelit'});
+    }
+  }
   if(S.coco){
     const r = parseCoco(S.coco.json);
     S.coco.rle = r.rle;
@@ -112,7 +127,7 @@ function reparseAll(){
 
 async function refresh(){
   reparseAll();
-  S.changed.clear(); S.cocoChanged = false;
+  S.changed.clear(); S.cocoChanged = false; S.labelitChanged = false;
   applyFilterSort();
   buildLegends();
   updateStats();
@@ -195,7 +210,7 @@ function updateStats(){
   $('sTotal').textContent = `이미지 ${S.images.size}`;
   $('sMatched').textContent = `라벨 매칭 ${matched}`;
   $('sObjs').textContent = `객체 ${objs}`;
-  const FMT_LABEL = {yolo:'YOLO', voc:'VOC XML', labelme:'LabelMe', coco:'COCO'};
+  const FMT_LABEL = {yolo:'YOLO', voc:'VOC XML', labelme:'LabelMe', coco:'COCO', labelit:'labelit.pro'};
   $('sFmt').textContent = '포맷 ' + ([...S.fmts].map(f => FMT_LABEL[f] || f).join(' + ') || '–');
   const missImgs = [...S.docs.keys()].filter(b => !S.images.has(b)).length;
   let msg;
@@ -453,7 +468,7 @@ async function drawLightbox(){
     URL.revokeObjectURL(url);
   }catch(e){}
   const d = S.docs.get(it.base);
-  const FMT_LABEL = {yolo:'YOLO', voc:'VOC XML', labelme:'LabelMe', coco:'COCO'};
+  const FMT_LABEL = {yolo:'YOLO', voc:'VOC XML', labelme:'LabelMe', coco:'COCO', labelit:'labelit.pro'};
   $('lbcap').textContent = `${it.name}  ·  ${shapesOf(it.base).length} obj  ·  ${d ? (FMT_LABEL[d.fmt] || d.fmt) : '라벨 없음'}  ·  ${S.lbIdx+1}/${S.items.length}`;
   if(loupeEnabled && lastMouse) drawLoupe();
 }
@@ -553,9 +568,8 @@ function deleteShape(base, i){
 }
 function markChanged(base){
   const d = S.docs.get(base);
-  if(d && d.fmt === 'coco') S.cocoChanged = true;
-  const anyCoco = shapesOf(base).some(s => s.src && s.src.fmt === 'coco');
-  if(anyCoco) S.cocoChanged = true;
+  if(d && (d.fmt === 'coco' || shapesOf(base).some(s => s.src && s.src.fmt === 'coco'))) S.cocoChanged = true;
+  if(d && (d.fmt === 'labelit' || shapesOf(base).some(s => s.src && s.src.fmt === 'labelit'))) S.labelitChanged = true;
   S.changed.add(base);
 }
 
@@ -899,19 +913,27 @@ function download(blob, filename){
 
 /* ========================= 수정 라벨 내보내기 ========================= */
 function exportLabels(){
-  if(!S.changed.size && !S.cocoChanged){
+  if(!S.changed.size && !S.cocoChanged && !S.labelitChanged){
     alert('변경된 라벨이 없습니다.\n(클래스 수정 또는 객체 삭제 후 저장하세요.)'); return;
   }
   const entries = [];
   for(const base of S.changed){
-    const d = S.docs.get(base); if(!d || d.fmt === 'coco') continue;
-    const shapes = shapesOf(base).filter(s => !s.src || s.src.fmt !== 'coco');
+    const d = S.docs.get(base); if(!d || d.fmt === 'coco' || d.fmt === 'labelit') continue;
+    const shapes = shapesOf(base).filter(s => !s.src || (s.src.fmt !== 'coco' && s.src.fmt !== 'labelit'));
     let text = '', name = d.file ? d.file.name : base;
     if(d.fmt === 'yolo') text = shapes.map(yoloLine).join('\n') + (shapes.length ? '\n' : '');
     else if(d.fmt === 'voc') text = serializeVoc(d.doc, shapes);
     else if(d.fmt === 'labelme') text = serializeLabelMe(d.obj, shapes);
     else continue;
     entries.push({name, data:_enc(text)});
+  }
+  if(S.labelitChanged && S.labelit){
+    const kept = new Set(), clsOf = new Map(), fieldOf = new Map();
+    for(const [, arr] of S.shapes) for(const sh of arr)
+      if(sh.src && sh.src.fmt === 'labelit'){ kept.add(sh.src.ref); clsOf.set(sh.src.ref, sh.cls); fieldOf.set(sh.src.ref, sh.src.field); }
+    const text = serializeLabelit(S.labelit.records, kept, clsOf, fieldOf);
+    const nm = S.labelit.file ? S.labelit.file.name.replace(/\.(json|jsonl|ndjson)$/i, '') : 'labelit';
+    entries.push({name: nm + '_edited.json', data:_enc(text)});
   }
   if(S.cocoChanged && S.coco){
     const kept = new Set(), clsOf = new Map();
@@ -1211,7 +1233,7 @@ async function exportPptx(){
     }
     if(!pics.length) continue;
     const d = S.docs.get(base);
-    const FMT_LABEL = {yolo:'YOLO', voc:'VOC XML', labelme:'LabelMe', coco:'COCO'};
+    const FMT_LABEL = {yolo:'YOLO', voc:'VOC XML', labelme:'LabelMe', coco:'COCO', labelit:'labelit.pro'};
     /* 오류가 많으면 패널을 넘치므로 같은 이미지를 여러 슬라이드로 나눠 싣는다 */
     const chunks = chunkErrors(errList);
     let off = 0;

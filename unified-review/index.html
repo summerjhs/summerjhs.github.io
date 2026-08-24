@@ -16,7 +16,7 @@
     <label class="file btn"><span>② 라벨 폴더</span>
       <input type="file" id="lblIn" webkitdirectory directory multiple></label>
     <label class="file btn"><span>라벨 파일(COCO 등)</span>
-      <input type="file" id="lblFiles" multiple accept=".txt,.xml,.json"></label>
+      <input type="file" id="lblFiles" multiple accept=".txt,.xml,.json,.jsonl,.ndjson"></label>
     <label class="file btn"><span>클래스 이름(선택)</span>
       <input type="file" id="clsIn" accept=".txt,.yaml,.yml,.names,.json,.csv"></label>
     <button class="btn" id="helpBtn" title="지원 포맷·사용법">❔ 도움말</button>
@@ -114,6 +114,7 @@
       <tr><td><b>Pascal VOC</b> <code>.xml</code></td><td>이미지당 1개 · <code>bndbox</code> / <code>polygon</code></td></tr>
       <tr><td><b>LabelMe</b> <code>.json</code></td><td>이미지당 1개 · rectangle · polygon · line · linestrip · point · circle</td></tr>
       <tr><td><b>COCO</b> <code>.json</code></td><td>단일 파일 · bbox + segmentation(폴리곤)</td></tr>
+      <tr><td><b>labelit.pro</b> <code>.json</code></td><td>결과 파일(줄마다 레코드, JSONL) · BOX·POLYGON·POLYLINE·POINT</td></tr>
     </table>
   </div>
 </main>
@@ -154,7 +155,10 @@
       확장자로 포맷을 자동 판별하며, 이미지와는 <b>확장자를 뺀 파일명</b>으로 매칭합니다
       (<code>a.jpg ↔ a.txt / a.xml / a.json</code>, <code>a.jpg.txt</code>도 인식).<br>
       <b>클래스 이름</b> → YOLO처럼 클래스가 숫자인 경우 <code>.txt/.yaml/.json</code>으로 이름을 지정합니다.
-      VOC·LabelMe·COCO는 라벨에 이름이 들어 있어 자동 등록됩니다.
+      VOC·LabelMe·COCO·labelit.pro는 라벨에 이름이 들어 있어 자동 등록됩니다.<br>
+      <b>labelit.pro 결과 파일</b>은 한 줄에 이미지 한 장(JSONL)인 형식이라 일반 JSON 뷰어에서는 열리지 않는데,
+      이 툴은 그대로 읽어 <code>importData_file_name</code>으로 이미지와 매칭하고
+      <code>info.assets</code>에 정의된 라벨 필드(예: label_symbol)를 클래스로 씁니다.
       <div class="st-h">2. 모아보기 / 필터</div>
       <b>클래스</b>·<b>유형</b>·<b>라벨 유무</b>·<b>오류</b> 필터로 원하는 대상만 모아 봅니다.
       범례(색 칩)를 클릭하면 해당 클래스/유형을 화면에서 숨기거나 다시 보여줍니다.<br>

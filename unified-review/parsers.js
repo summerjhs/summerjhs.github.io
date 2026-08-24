@@ -44,7 +44,8 @@ const extOf = n => (n.split('.').pop() || '').toLowerCase();
 const IMG_EXT = ['jpg','jpeg','png','bmp','webp','tif','tiff','gif'];
 /* image.jpg · image.txt · image.jpg.txt · image.xml 을 모두 같은 키로 정규화 */
 function baseOf(n){
-  let s = String(n).toLowerCase();
+  /* 한글 파일명은 macOS(NFD)와 Windows/JSON(NFC)의 표현이 달라 그대로는 매칭이 안 된다 → NFC로 통일 */
+  let s = String(n).normalize ? String(n).normalize('NFC').toLowerCase() : String(n).toLowerCase();
   s = s.replace(/\.(txt|json|xml)$/, '');
   s = s.replace(/\.(jpe?g|png|bmp|webp|tiff?|gif)$/, '');
   return s;
@@ -240,6 +241,155 @@ function serializeCoco(obj, keptAnnSet, clsOfAnn){
   return JSON.stringify(out);
 }
 
+/* ================= labelit.pro 결과 (JSONL / JSON) =================
+   한 줄에 이미지 한 장의 레코드가 들어 있는 형식.
+     {"dataID":…, "importData_file_name":"a.jpg",
+      "name_XXXXXX": { info:[{name:'Image Bounding', assets:{label_symbol:{…}}}],
+                       data:[{objectID, value:{annotation:'BOX', coords:{tl,tr,br,bl},
+                                               object:{left,top,width,height,angle},
+                                               label_symbol:'K'}}] } }
+   ------------------------------------------------------------------- */
+/* 어노테이션 묶음(= info/data를 가진 키) 목록 */
+function labelitGroups(rec){
+  const out = [];
+  for(const k in rec){
+    const v = rec[k];
+    if(v && typeof v === 'object' && Array.isArray(v.data) && Array.isArray(v.info)) out.push(k);
+  }
+  return out;
+}
+function isLabelitRecord(o){
+  return !!o && typeof o === 'object' && !Array.isArray(o) &&
+         (o.importData_file_name != null || o.dataID != null) && labelitGroups(o).length > 0;
+}
+/* JSONL(줄마다 JSON) 파싱 — 한 줄이라도 깨지면 건너뛴다 */
+function parseJsonLines(text){
+  const recs = [];
+  for(const line of String(text).replace(/^﻿/, '').split(/\r?\n/)){
+    const t = line.trim(); if(!t) continue;
+    try{ const o = JSON.parse(t); if(o && typeof o === 'object') recs.push(o); }catch(e){}
+  }
+  return recs;
+}
+/* info의 assets에서 '라벨을 담고 있는 필드'를 찾아, 값과 필드 설명을 돌려준다 */
+function labelitLabel(val, group){
+  const assetKeys = [];
+  for(const inf of (group.info || []))
+    for(const ak in (inf.assets || {})) if(!assetKeys.includes(ak)) assetKeys.push(ak);
+  const attrs = {};
+  let name = null, field = null;
+  const take = (k, v) => {
+    let txt = null, kind = null;
+    if(typeof v === 'string'){ txt = v.trim(); kind = 'string'; }
+    else if(Array.isArray(v)){ txt = v.map(x => (x && (x.label ?? x.value)) || '').filter(Boolean).join('/'); kind = 'array'; }
+    else if(v && typeof v === 'object' && (v.label != null || v.value != null)){ txt = String(v.label ?? v.value); kind = 'object'; }
+    if(!txt) return;
+    if(name == null){ name = txt; field = {key:k, kind}; } else attrs[k] = txt;
+  };
+  for(const k of assetKeys) if(val[k] != null) take(k, val[k]);
+  if(name == null && val.extra && (val.extra.label || val.extra.value)){
+    name = String(val.extra.label || val.extra.value); field = {key:'extra', kind:'extra'};
+  }
+  if(name == null && typeof val.label === 'string' && val.label.trim()){
+    name = val.label.trim(); field = {key:'label', kind:'string'};
+  }
+  if(val.text && String(val.text).trim()) attrs.text = String(val.text).trim();
+  if(Array.isArray(val.warnings) && val.warnings.length) attrs.warnings = val.warnings.length;
+  return {name, field, attrs};
+}
+const LABELIT_KIND = { BOX:'box', RBOX:'polygon', POLYGON:'polygon', POLY:'polygon',
+                       POLYLINE:'polyline', LINE:'polyline', POINT:'point', DOT:'point', CIRCLE:'circle' };
+/* 레코드 하나 → shapes */
+function labelitShapes(rec){
+  const shapes = [];
+  for(const gk of labelitGroups(rec)){
+    const g = rec[gk];
+    (g.data || []).forEach((d, idx) => {
+      const val = d.value || {};
+      const ann = String(val.annotation || '').toUpperCase();
+      const {name, field, attrs} = labelitLabel(val, g);
+      const cls = CLS.register(name || ann || 'object');
+      const src = {fmt:'labelit', rec, grp:gk, idx, ref:d, field};
+      const pts = (val.points || val.point || []).map ? (val.points || []) : [];
+      const toXY = p => [ +(p.x ?? p[0]), +(p.y ?? p[1]) ];
+      let kind = LABELIT_KIND[ann] || null;
+      const c = val.coords;
+      if((!kind || kind === 'box') && c && c.tl && c.br){
+        const corners = [c.tl, c.tr, c.br, c.bl].filter(Boolean).map(toXY);
+        const rotated = Math.abs(+(val.angle || (val.object && val.object.angle) || 0)) > 0.01;
+        if(rotated && corners.length === 4){        // 회전 박스는 네 꼭짓점 폴리곤으로
+          shapes.push({cls, kind:'polygon', pts:corners, norm:false, src, attrs});
+          return;
+        }
+        const xs = corners.map(p => p[0]), ys = corners.map(p => p[1]);
+        shapes.push({cls, kind:'box', pts:[[Math.min(...xs), Math.min(...ys)], [Math.max(...xs), Math.max(...ys)]],
+                     norm:false, src, attrs});
+        return;
+      }
+      if((!kind || kind === 'box') && val.object && val.object.width != null){
+        const o = val.object;
+        shapes.push({cls, kind:'box', pts:[[+o.left, +o.top], [+o.left + +o.width, +o.top + +o.height]],
+                     norm:false, src, attrs});
+        return;
+      }
+      if(pts.length){
+        const P = pts.map(toXY).filter(p => !Number.isNaN(p[0]) && !Number.isNaN(p[1]));
+        if(!P.length) return;
+        if(!kind) kind = P.length === 1 ? 'point' : (P.length === 2 ? 'polyline' : 'polygon');
+        if(kind === 'point') shapes.push({cls, kind:'point', pts:[P[0]], norm:false, src, attrs});
+        else shapes.push({cls, kind, pts:P, norm:false, src, attrs});
+        return;
+      }
+      if(val.object && val.object.left != null)     // 좌표만 있는 포인트
+        shapes.push({cls, kind:'point', pts:[[+val.object.left, +val.object.top]], norm:false, src, attrs});
+    });
+  }
+  return shapes;
+}
+/* 레코드 배열 → base별 shapes */
+function parseLabelit(records){
+  const byBase = new Map();
+  for(const rec of records){
+    const fn = rec.importData_file_name || rec.file_name || rec.dataID;
+    if(!fn) continue;
+    const b = baseOf(String(fn).split(/[\\/]/).pop());
+    const arr = byBase.get(b) || [];
+    arr.push(...labelitShapes(rec));
+    byBase.set(b, arr);
+  }
+  return {byBase, records};
+}
+/* 라벨 수정·객체 삭제를 반영한 JSONL 문자열 */
+function applyLabelitLabel(val, field, name){
+  if(!field) return;
+  if(field.kind === 'string') val[field.key] = name;
+  else if(field.kind === 'array'){
+    const first = Array.isArray(val[field.key]) && val[field.key][0] ? val[field.key][0] : {};
+    val[field.key] = [Object.assign({}, first, {label:name})];
+  }
+  else if(field.kind === 'object') val[field.key] = Object.assign({}, val[field.key], {label:name});
+  else if(field.kind === 'extra') val.extra = Object.assign({}, val.extra, {label:name});
+}
+function serializeLabelit(records, kept, clsOf, fieldOf){
+  const lines = [];
+  for(const rec of records){
+    const copy = Object.assign({}, rec);
+    for(const gk of labelitGroups(rec)){
+      const g = rec[gk], nd = [];
+      for(const d of (g.data || [])){
+        if(!kept.has(d)) continue;
+        const cd = JSON.parse(JSON.stringify(d));
+        const cls = clsOf.get(d);
+        if(cls != null) applyLabelitLabel(cd.value || (cd.value = {}), fieldOf.get(d), CLS.nameOf(cls));
+        nd.push(cd);
+      }
+      copy[gk] = Object.assign({}, g, {data: nd});
+    }
+    lines.push(JSON.stringify(copy));
+  }
+  return lines.join('\n') + '\n';
+}
+
 /* =============== 클래스 이름 파일(.txt/.names/.yaml/.json) =============== */
 function parseNamesFile(txt, fname){
   const names = {};
@@ -281,13 +431,22 @@ function parseLabelFile(name, text){
     const r = parseVoc(text);
     return r ? { fmt:'voc', shapes:r.shapes, doc:r.doc, dim:r.dim } : null;
   }
-  if(ext === 'json'){
-    let j; try{ j = JSON.parse(text); }catch(e){ return null; }
-    if(isCocoJson(j)) return { fmt:'coco-global', json:j };
-    if(Array.isArray(j.shapes)){
-      const r = parseLabelMe(j);
-      return { fmt:'labelme', shapes:r.shapes, obj:r.obj, dim:r.dim };
+  if(ext === 'json' || ext === 'jsonl' || ext === 'ndjson'){
+    let j = null;
+    try{ j = JSON.parse(text); }catch(e){ j = null; }
+    if(j){
+      if(isCocoJson(j)) return { fmt:'coco-global', json:j };
+      if(Array.isArray(j.shapes)){
+        const r = parseLabelMe(j);
+        return { fmt:'labelme', shapes:r.shapes, obj:r.obj, dim:r.dim };
+      }
+      if(isLabelitRecord(j)) return { fmt:'labelit-global', records:[j] };
+      if(Array.isArray(j) && j.some(isLabelitRecord)) return { fmt:'labelit-global', records:j.filter(isLabelitRecord) };
+      return null;
     }
+    /* 통짜 JSON이 아니면 JSONL(줄마다 JSON)로 다시 시도 — labelit.pro 결과 파일 */
+    const recs = parseJsonLines(text).filter(isLabelitRecord);
+    if(recs.length) return { fmt:'labelit-global', records:recs };
     return null;
   }
   return null;
