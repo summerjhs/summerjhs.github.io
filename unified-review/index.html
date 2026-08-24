@@ -4,13 +4,13 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>통합 어노테이션 검수 툴</title>
-<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="style.css?v=260824a">
 </head>
 <body>
 
 <header>
   <div class="row">
-    <h1>통합 어노테이션 검수 툴<span class="sub">BBox · Polygon · Polyline · Point</span></h1>
+    <h1>통합 어노테이션 검수 툴<span class="sub">BBox · Polygon · Polyline · Point</span><span class="sub" id="build" title="빌드 버전 — 최신인지 확인용">build 260824a</span></h1>
     <label class="file btn primary"><span>① 이미지 폴더</span>
       <input type="file" id="imgIn" webkitdirectory directory multiple></label>
     <label class="file btn"><span>② 라벨 폴더</span>
@@ -178,6 +178,9 @@
       <b>오류 CSV</b> — 이미지·객체·오류 종류·정답 클래스·메모 표.<br>
       <b>검수기록 저장/불러오기</b> — 오류 기록을 JSON으로 백업하거나 다른 PC에서 이어서 검수.
       (기록은 브라우저 localStorage에도 자동 저장됩니다.)
+      <div class="st-h">버전</div>
+      현재 빌드 <b>260824a</b>. 기능이 예전 그대로라면 브라우저가 이전 파일을 캐시하고 있는 것이니
+      <kbd>⌘</kbd><kbd>⇧</kbd><kbd>R</kbd>(윈도우는 <kbd>Ctrl</kbd><kbd>F5</kbd>)로 강력 새로고침 하세요.
       <div class="st-h">단축키</div>
       <kbd>H</kbd> 도형/라벨 표시 토글 · <kbd>A</kbd> 라벨 영역만 크게 보기 · <kbd>Z</kbd> 돋보기 켜기/끄기 · <kbd>+</kbd><kbd>-</kbd> 돋보기 배율 ·
       <kbd>←</kbd><kbd>→</kbd>/<kbd>D</kbd><kbd>F</kbd> 이전·다음 이미지 · <kbd>Tab</kbd> 다음 객체 ·
@@ -186,8 +189,8 @@
   </div>
 </div>
 
-<script src="parsers.js"></script>
-<script src="render.js"></script>
-<script src="app.js"></script>
+<script src="parsers.js?v=260824a"></script>
+<script src="render.js?v=260824a"></script>
+<script src="app.js?v=260824a"></script>
 </body>
 </html>

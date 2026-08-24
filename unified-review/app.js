@@ -25,6 +25,7 @@ const S = {
   coco:   null,        // {json, file}
   labelit: null,       // {records, file} — labelit.pro 결과(JSONL)
   fmts:   new Set(),
+  badFiles: [],        // 형식을 인식하지 못한 라벨 파일 {name, reason}
   items: [], objItems: [],
   page: 0, view: 'image',
   errors: new Map(),   // base -> [err]
@@ -61,14 +62,26 @@ $('lblIn').addEventListener('change', e => ingestLabels(e.target.files));
 $('lblFiles').addEventListener('change', e => ingestLabels(e.target.files));
 
 async function ingestLabels(fileList){
-  const files = [...fileList].filter(f => ['txt','xml','json','jsonl','ndjson'].includes(extOf(f.name)));
-  if(!files.length){ $('hint').textContent = '※ .txt / .xml / .json 라벨 파일을 찾지 못했습니다.'; return; }
+  const all = [...fileList];
+  const files = all.filter(f => ['txt','xml','json','jsonl','ndjson'].includes(extOf(f.name)));
+  if(!files.length){
+    $('hint').textContent = all.length
+      ? `※ 라벨 파일을 찾지 못했습니다. 고른 ${all.length}개는 .txt/.xml/.json/.jsonl 이 아닙니다.`
+      : '※ .txt / .xml / .json 라벨 파일을 찾지 못했습니다.';
+    return;
+  }
+  S.badFiles = [];                      // 인식하지 못한 파일 (이유와 함께 안내)
   const CONC = 48;
   for(let i = 0; i < files.length; i += CONC){
     await Promise.all(files.slice(i, i + CONC).map(async f => {
-      let text; try{ text = await f.text(); }catch(e){ return; }
+      let text;
+      try{ text = await f.text(); }
+      catch(e){ S.badFiles.push({name:f.name, reason:'파일을 읽지 못했습니다'}); return; }
       const r = parseLabelFile(f.name, text);
-      if(!r) return;
+      if(!r || r.fmt === 'unsupported'){
+        S.badFiles.push({name:f.name, reason: (r && r.reason) || '형식을 알 수 없습니다'});
+        return;
+      }
       if(r.fmt === 'coco-global'){ S.coco = {json:r.json, file:f}; S.fmts.add('coco'); return; }
       if(r.fmt === 'labelit-global'){
         if(S.labelit) S.labelit.records = S.labelit.records.concat(r.records);   // 여러 파일 이어붙이기
@@ -214,6 +227,15 @@ function updateStats(){
   $('sFmt').textContent = '포맷 ' + ([...S.fmts].map(f => FMT_LABEL[f] || f).join(' + ') || '–');
   const missImgs = [...S.docs.keys()].filter(b => !S.images.has(b)).length;
   let msg;
+  if(S.badFiles && S.badFiles.length){       // 못 읽은 파일이 있으면 먼저 알린다
+    const b = S.badFiles[0];
+    $('hint').innerHTML = `<span style="color:var(--bad)">※ 인식하지 못한 라벨 파일 ${S.badFiles.length}개</span> — ` +
+      `<b>${esc(b.name)}</b>: ${esc(b.reason)}` +
+      (S.badFiles.length > 1 ? ` 외 ${S.badFiles.length - 1}개` : '') +
+      ` <span class="muted">(도움말의 지원 포맷 확인)</span>`;
+    updateErrStat();
+    return;
+  }
   if(S.images.size && !S.docs.size && !S.coco) msg = '※ 라벨 폴더/파일을 아직 선택하지 않았습니다.';
   else if(S.images.size && !matched) msg = '※ 이미지와 라벨 파일명이 매칭되지 않습니다 (예: abc.jpg ↔ abc.txt / abc.xml / abc.json).';
   else if(matched && !objs) msg = '※ 매칭은 됐지만 객체가 0개입니다. 라벨 내용 형식을 확인하세요.';

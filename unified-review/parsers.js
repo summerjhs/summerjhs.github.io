@@ -258,9 +258,14 @@ function labelitGroups(rec){
   }
   return out;
 }
+const LABELIT_NAME_KEYS = ['importData_file_name','file_name','fileName','imagePath','image','filename','name','dataID'];
+function labelitFileName(rec){
+  for(const k of LABELIT_NAME_KEYS){ const v = rec[k]; if(typeof v === 'string' && v.trim()) return v.trim(); }
+  if(rec.dataID != null) return String(rec.dataID);
+  return null;
+}
 function isLabelitRecord(o){
-  return !!o && typeof o === 'object' && !Array.isArray(o) &&
-         (o.importData_file_name != null || o.dataID != null) && labelitGroups(o).length > 0;
+  return !!o && typeof o === 'object' && !Array.isArray(o) && labelitGroups(o).length > 0;
 }
 /* JSONL(줄마다 JSON) 파싱 — 한 줄이라도 깨지면 건너뛴다 */
 function parseJsonLines(text){
@@ -350,7 +355,7 @@ function labelitShapes(rec){
 function parseLabelit(records){
   const byBase = new Map();
   for(const rec of records){
-    const fn = rec.importData_file_name || rec.file_name || rec.dataID;
+    const fn = labelitFileName(rec);
     if(!fn) continue;
     const b = baseOf(String(fn).split(/[\\/]/).pop());
     const arr = byBase.get(b) || [];
@@ -426,10 +431,11 @@ function parseNamesFile(txt, fname){
 /* 반환: {fmt, shapes, doc?, obj?, dim?} · COCO 전체 파일이면 {fmt:'coco-global', json} */
 function parseLabelFile(name, text){
   const ext = extOf(name);
+  const bad = reason => ({ fmt:'unsupported', reason });
   if(ext === 'txt') return { fmt:'yolo', shapes: parseYolo(text) };
   if(ext === 'xml'){
     const r = parseVoc(text);
-    return r ? { fmt:'voc', shapes:r.shapes, doc:r.doc, dim:r.dim } : null;
+    return r ? { fmt:'voc', shapes:r.shapes, doc:r.doc, dim:r.dim } : bad('XML을 읽지 못했습니다 (형식 오류)');
   }
   if(ext === 'json' || ext === 'jsonl' || ext === 'ndjson'){
     let j = null;
@@ -441,13 +447,22 @@ function parseLabelFile(name, text){
         return { fmt:'labelme', shapes:r.shapes, obj:r.obj, dim:r.dim };
       }
       if(isLabelitRecord(j)) return { fmt:'labelit-global', records:[j] };
-      if(Array.isArray(j) && j.some(isLabelitRecord)) return { fmt:'labelit-global', records:j.filter(isLabelitRecord) };
-      return null;
+      if(Array.isArray(j)){
+        const recs = j.filter(isLabelitRecord);
+        if(recs.length) return { fmt:'labelit-global', records:recs };
+        const lm = j.filter(o => o && Array.isArray(o.shapes));
+        if(lm.length) return { fmt:'labelit-global', records:[] };   // 형태만 맞고 내용 없음
+      }
+      const keys = Object.keys(j).slice(0, 6).join(', ');
+      return bad(`JSON은 읽었지만 COCO·LabelMe·labelit 구조가 아닙니다 (최상위 키: ${keys})`);
     }
     /* 통짜 JSON이 아니면 JSONL(줄마다 JSON)로 다시 시도 — labelit.pro 결과 파일 */
-    const recs = parseJsonLines(text).filter(isLabelitRecord);
+    const all = parseJsonLines(text);
+    const recs = all.filter(isLabelitRecord);
     if(recs.length) return { fmt:'labelit-global', records:recs };
-    return null;
+    if(!all.length) return bad('JSON으로 읽히지 않습니다 (JSON도 JSONL도 아님)');
+    const keys = Object.keys(all[0]).slice(0, 6).join(', ');
+    return bad(`줄 단위 JSON ${all.length}개를 읽었지만 어노테이션 묶음(info+data)이 없습니다 (첫 줄 키: ${keys})`);
   }
-  return null;
+  return bad(`지원하지 않는 확장자: .${ext}`);
 }
