@@ -282,20 +282,24 @@ function loadImg(file){
 let pageUrls = [];
 function releaseUrls(){ pageUrls.forEach(u => URL.revokeObjectURL(u)); pageUrls = []; }
 
+/* 렌더 도중 다시 렌더가 시작되면(토글 연타 등) 이전 렌더는 중단 — 카드가 섞이는 것을 방지 */
+let renderSeq = 0;
 async function renderPage(){
+  const my = ++renderSeq;
   $('welcome').style.display = S.images.size ? 'none' : 'block';
   releaseUrls();
   const grid = $('grid'); grid.innerHTML = '';
   grid.style.setProperty('--card', $('cardSize').value + 'px');
   renderPager();
-  if(S.view === 'object') await renderObjectGrid(grid);
-  else await renderImageGrid(grid);
+  if(S.view === 'object') await renderObjectGrid(grid, my);
+  else await renderImageGrid(grid, my);
 }
 
-async function renderImageGrid(grid){
+async function renderImageGrid(grid, my){
   const per = +$('perPage').value, start = S.page * per;
   const slice = S.items.slice(start, start + per);
   for(const it of slice){
+    if(my !== renderSeq) return;
     const card = document.createElement('div'); card.className = 'card';
     const wrap = document.createElement('div'); wrap.className = 'cvwrap';
     const cv = document.createElement('canvas'); wrap.appendChild(cv);
@@ -304,12 +308,14 @@ async function renderImageGrid(grid){
       `<span class="ct ${it.count ? '' : 'empty'}">${it.count} obj${it.errCount ? ` · <span class="badge-err">⚠${it.errCount}</span>` : ''}</span>`;
     card.appendChild(wrap); card.appendChild(cap); grid.appendChild(card);
     try{
-      const {im, url} = await loadImg(it.file); pageUrls.push(url);
+      const {im, url} = await loadImg(it.file);
+      if(my !== renderSeq){ URL.revokeObjectURL(url); return; }
+      pageUrls.push(url);
       drawScene(cv, im, shapesOf(it.base), {errors: errsOf(it.base)});
     }catch(e){ wrap.innerHTML = '<div class="muted" style="padding:20px">이미지 로드 실패</div>'; }
     wrap.onclick = () => openLightbox(it.idx);
   }
-  if(!slice.length && S.images.size)
+  if(!slice.length && S.images.size && my === renderSeq)
     grid.innerHTML = '<div class="empty-state">조건에 맞는 이미지가 없습니다. 필터를 확인하세요.</div>';
 }
 
@@ -349,7 +355,7 @@ function drawCrop(cv, img, shapes, target, W, H, outMax){
   ctx.restore();
 }
 
-async function renderObjectGrid(grid){
+async function renderObjectGrid(grid, my){
   const per = +$('perPage').value, start = S.page * per;
   const slice = S.objItems.slice(start, start + per);
   if(!slice.length){
@@ -381,7 +387,9 @@ async function renderObjectGrid(grid){
   }
   const outMax = Math.max(160, +$('cardSize').value);
   for(const base of order){
+    if(my !== renderSeq) return;
     let loaded; try{ loaded = await loadImg(S.images.get(base).file); }catch(e){ continue; }
+    if(my !== renderSeq){ URL.revokeObjectURL(loaded.url); return; }
     pageUrls.push(loaded.url);
     const W = loaded.im.naturalWidth, H = loaded.im.naturalHeight;
     const shapes = shapesOf(base);
@@ -437,10 +445,11 @@ async function drawLightbox(){
   const it = S.items[S.lbIdx]; if(!it) return;
   try{
     const {im, url} = await loadImg(it.file);
-    drawScene($('lbcv'), im, shapesOf(it.base), {
+    const r = drawScene($('lbcv'), im, shapesOf(it.base), {
       errors: errsOf(it.base),
       sel: (S.selBase === it.base ? S.sel : null)
     });
+    S.lbDim = {W:r.W, H:r.H, vp:r.vp};   // '라벨 영역만'으로 잘렸을 때 클릭 좌표 환산에 사용
     URL.revokeObjectURL(url);
   }catch(e){}
   const d = S.docs.get(it.base);
@@ -722,19 +731,24 @@ $('loupeOn').addEventListener('change', e => setLoupe(e.target.checked));
 $('loupeZoom').addEventListener('input', e => setZoom(+e.target.value));
 $('lbcv').addEventListener('mousemove', e => { lastMouse = {x:e.clientX, y:e.clientY}; if(loupeEnabled) drawLoupe(); });
 $('lbcv').addEventListener('mouseleave', () => { lastMouse = null; hideLoupe(); });
+/* 캔버스 위 좌표 → 원본 이미지 픽셀 좌표 (잘라 보기 상태를 반영) */
+function lbPoint(e){
+  const cv = $('lbcv'), r = cv.getBoundingClientRect();
+  const d = S.lbDim || {W:cv.width, H:cv.height, vp:{x:0, y:0, w:cv.width, h:cv.height}};
+  const vp = d.vp || {x:0, y:0, w:cv.width, h:cv.height};
+  const inX = (e.clientX - r.left) / r.width, inY = (e.clientY - r.top) / r.height;
+  return {x: vp.x + inX*vp.w, y: vp.y + inY*vp.h, W:d.W, H:d.H, inside: inX >= 0 && inY >= 0 && inX <= 1 && inY <= 1};
+}
 $('lbcv').addEventListener('click', e => {
   const it = S.items[S.lbIdx]; if(!it) return;
-  const cv = $('lbcv'), r = cv.getBoundingClientRect();
-  const x = (e.clientX - r.left) * cv.width / r.width, y = (e.clientY - r.top) * cv.height / r.height;
-  const i = hitTest(shapesOf(it.base), x, y, cv.width, cv.height);
+  const p = lbPoint(e); if(!p.inside) return;
+  const i = hitTest(shapesOf(it.base), p.x, p.y, p.W, p.H);
   if(i >= 0) selectShape(it.base, i);
 });
 $('lbcv').addEventListener('dblclick', e => {
   const it = S.items[S.lbIdx]; if(!it) return;
-  const cv = $('lbcv'), r = cv.getBoundingClientRect();
-  const nx = (e.clientX - r.left) / r.width, ny = (e.clientY - r.top) / r.height;
-  if(nx < 0 || ny < 0 || nx > 1 || ny > 1) return;
-  selectPointAt(it.base, nx, ny);
+  const p = lbPoint(e); if(!p.inside) return;
+  selectPointAt(it.base, p.x / p.W, p.y / p.H);
 });
 $('lb').querySelector('.close').onclick = closeLightbox;
 $('lb').querySelector('.prev').onclick = () => lbStep(-1);
@@ -751,6 +765,10 @@ document.addEventListener('keydown', e => {
     $('showShapes').checked = on; VIEW.show = on;
     $('labelMode').value = on ? 'class' : 'off'; VIEW.labelMode = on ? 'class' : 'off';
     redrawAll(); e.preventDefault(); return;
+  }
+  if(e.code === 'KeyA'){   // 라벨 영역만 크게 보기 토글
+    $('fitAnn').checked = !$('fitAnn').checked;
+    VIEW.fitAnn = $('fitAnn').checked; redrawAll(); e.preventDefault(); return;
   }
   if(!lbOn()) return;
   if(e.code === 'KeyD'){ lbStep(-1); e.preventDefault(); return; }
@@ -1275,6 +1293,7 @@ $('fillA').addEventListener('input', e => { VIEW.fillAlpha = +e.target.value; ap
 $('labelMode').addEventListener('change', e => { VIEW.labelMode = e.target.value; redrawAll(); });
 $('showShapes').addEventListener('change', e => { VIEW.show = e.target.checked; redrawAll(); });
 $('showVerts').addEventListener('change', e => { VIEW.vertices = e.target.checked; redrawAll(); });
+$('fitAnn').addEventListener('change', e => { VIEW.fitAnn = e.target.checked; redrawAll(); });
 let qTimer;
 $('q').addEventListener('input', () => { clearTimeout(qTimer); qTimer = setTimeout(refilter, 180); });
 $('q').addEventListener('keydown', e => { if(e.key === 'Escape'){ $('q').value = ''; refilter(); } });

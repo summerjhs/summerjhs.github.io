@@ -82,6 +82,7 @@
       </select></label>
     <label class="muted"><input type="checkbox" id="showShapes" checked> 도형</label>
     <label class="muted"><input type="checkbox" id="showVerts"> 꼭짓점</label>
+    <label class="muted" title="어노테이션이 있는 부분만 잘라서 크게 봅니다 (단축키 A)"><input type="checkbox" id="fitAnn"> 🔍 라벨 영역만</label>
     <label class="muted"><input type="checkbox" id="loupeOn" checked> 🔍 돋보기</label>
     <label class="muted">배율
       <input type="range" id="loupeZoom" min="2" max="12" value="3" step="1" style="vertical-align:middle;width:70px"><span class="stat" id="loupeZoomV">3×</span></label>
@@ -126,7 +127,7 @@
     <div id="lbstage"><canvas id="lbcv"></canvas><canvas id="loupe"></canvas></div>
     <div id="lbcap"></div>
     <div id="lbhint">객체 클릭 → 선택 · 빈 곳 <b>더블클릭</b> → 누락 지점 표시 · <b>마우스를 올리면 돋보기</b>(끄기 <kbd>Z</kbd>) · 배율 <kbd>+</kbd><kbd>-</kbd> ·
-      표시 토글 <kbd>H</kbd> · 이동 <kbd>←</kbd><kbd>→</kbd> 또는 <kbd>D</kbd><kbd>F</kbd> · 다음 객체 <kbd>Tab</kbd></div>
+      표시 토글 <kbd>H</kbd> · 라벨 영역만 <kbd>A</kbd> · 이동 <kbd>←</kbd><kbd>→</kbd> 또는 <kbd>D</kbd><kbd>F</kbd> · 다음 객체 <kbd>Tab</kbd></div>
   </div>
   <div id="side"></div>
 </div>
@@ -157,6 +158,8 @@
       <div class="st-h">2. 모아보기 / 필터</div>
       <b>클래스</b>·<b>유형</b>·<b>라벨 유무</b>·<b>오류</b> 필터로 원하는 대상만 모아 봅니다.
       범례(색 칩)를 클릭하면 해당 클래스/유형을 화면에서 숨기거나 다시 보여줍니다.<br>
+      <b>🔍 라벨 영역만</b>을 켜면 어노테이션이 있는 부분만 잘라서 크게 보여줍니다(전체 이미지에 비해 객체가 작을 때 유용).
+      끄면 다시 전체 이미지가 보입니다. 격자·확대 화면·PPTX 내보내기에 모두 적용됩니다.<br>
       <b>🔬 객체 모아보기</b>는 객체 하나하나를 크롭해 카드로 늘어놓아, 같은 클래스끼리 라벨 품질을 비교하기 좋습니다.
       카드를 클릭하면 원본 이미지의 해당 객체가 선택된 상태로 열립니다.
       <div class="st-h">3. 검수</div>
@@ -172,7 +175,7 @@
       <b>검수기록 저장/불러오기</b> — 오류 기록을 JSON으로 백업하거나 다른 PC에서 이어서 검수.
       (기록은 브라우저 localStorage에도 자동 저장됩니다.)
       <div class="st-h">단축키</div>
-      <kbd>H</kbd> 도형/라벨 표시 토글 · <kbd>Z</kbd> 돋보기 켜기/끄기 · <kbd>+</kbd><kbd>-</kbd> 돋보기 배율 ·
+      <kbd>H</kbd> 도형/라벨 표시 토글 · <kbd>A</kbd> 라벨 영역만 크게 보기 · <kbd>Z</kbd> 돋보기 켜기/끄기 · <kbd>+</kbd><kbd>-</kbd> 돋보기 배율 ·
       <kbd>←</kbd><kbd>→</kbd>/<kbd>D</kbd><kbd>F</kbd> 이전·다음 이미지 · <kbd>Tab</kbd> 다음 객체 ·
       <kbd>1</kbd>~<kbd>5</kbd> 오류 종류 지정 · <kbd>Del</kbd> 선택 오류 삭제 · <kbd>Esc</kbd> 닫기
     </div>

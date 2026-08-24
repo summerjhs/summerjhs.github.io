@@ -10,6 +10,7 @@ const VIEW = {
   labelScale: 1,
   fillAlpha: 0.14,     // 폴리곤 채우기 투명도 (0이면 외곽선만)
   vertices: false,     // 꼭짓점 점 표시
+  fitAnn: false,       // 어노테이션이 있는 영역만 잘라 크게 보기
   classOff: new Set(), // 숨긴 클래스 id
   kindOff: new Set()   // 숨긴 도형 종류
 };
@@ -66,6 +67,34 @@ function shapeRect(sh, W, H){
 function shapeArea(sh, W, H){ const r = shapeRect(sh, W, H); return Math.max(1, r.w*r.h); }
 const visibleShape = sh => !VIEW.classOff.has(sh.cls) && !VIEW.kindOff.has(sh.kind);
 
+/* 보이는 도형 + 오류 지점을 모두 감싸는 영역 (여백 포함). 없으면 null → 전체 이미지 */
+function annBounds(shapes, errors, W, H){
+  let minx = Infinity, miny = Infinity, maxx = -Infinity, maxy = -Infinity, any = false;
+  const add = (x, y, w, h) => { any = true;
+    minx = Math.min(minx, x); miny = Math.min(miny, y);
+    maxx = Math.max(maxx, x + (w||0)); maxy = Math.max(maxy, y + (h||0)); };
+  for(const sh of shapes){
+    if(!visibleShape(sh)) continue;
+    const r = shapeRect(sh, W, H);
+    add(r.x, r.y, r.w, r.h);
+  }
+  for(const e of (errors || []))            // 누락 지점 표시도 잘리지 않게 포함
+    if(e.kind === 'point') add(e.x*W, e.y*H, 0, 0);
+  if(!any) return null;
+  let w = maxx - minx, h = maxy - miny;
+  const pad = Math.max(16, Math.min(W, H)*0.02, Math.max(w, h)*0.14);
+  let x = minx - pad, y = miny - pad; w += pad*2; h += pad*2;
+  /* 너무 작은 영역은 과하게 확대되므로 최소 크기를 둔다 */
+  const minSide = Math.max(120, Math.min(W, H)*0.12);
+  if(w < minSide){ x -= (minSide - w)/2; w = minSide; }
+  if(h < minSide){ y -= (minSide - h)/2; h = minSide; }
+  x = Math.max(0, Math.min(x, W - Math.min(w, W)));
+  y = Math.max(0, Math.min(y, H - Math.min(h, H)));
+  w = Math.min(w, W - x); h = Math.min(h, H - y);
+  if(w >= W && h >= H) return null;         // 사실상 전체면 자르지 않음
+  return {x:Math.round(x), y:Math.round(y), w:Math.round(w), h:Math.round(h)};
+}
+
 /* ---- 개별 도형 경로 ---- */
 function pathShape(ctx, sh, W, H){
   const rs = ringsPx(sh, W, H);
@@ -88,9 +117,9 @@ function pathShape(ctx, sh, W, H){
     }
   }
 }
-function drawVertices(ctx, sh, W, H, col){
+function drawVertices(ctx, sh, W, H, col, vp){
   if(sh.kind === 'box' || sh.kind === 'point') return;
-  const rad = Math.max(1.6, Math.min(W,H)/420 + VIEW.lineW*0.4);
+  const rad = Math.max(1.6, Math.min(vp.w, vp.h)/420 + VIEW.lineW*0.4);
   ctx.save(); ctx.fillStyle = col; ctx.strokeStyle = 'rgba(255,255,255,.9)'; ctx.lineWidth = rad*0.5;
   for(const r of ringsPx(sh, W, H)) for(const p of r){
     ctx.beginPath(); ctx.arc(p[0], p[1], rad, 0, Math.PI*2); ctx.fill(); ctx.stroke();
@@ -99,31 +128,33 @@ function drawVertices(ctx, sh, W, H, col){
 }
 
 /* ---- 클래스 이름 칩 (박스 위쪽 바깥) ---- */
-function drawClassLabel(ctx, r, text, id, W, H){
-  const fs = Math.max(10, Math.round(Math.min(W,H)/55 * VIEW.labelScale));
+function drawClassLabel(ctx, r, text, id, vp){
+  const fs = Math.max(10, Math.round(Math.min(vp.w, vp.h)/55 * VIEW.labelScale));
   const padX = Math.max(3, Math.round(fs*0.35)), padY = Math.max(2, Math.round(fs*0.18));
   ctx.save();
   ctx.font = `600 ${fs}px sans-serif`; ctx.textBaseline = 'top';
   const bw = ctx.measureText(text).width + padX*2, bh = fs + padY*2;
   let x = Math.round(r.x);
   let y = Math.round(r.y) - bh - Math.max(2, Math.round(fs*0.18));
-  if(y < 0) y = Math.round(r.y + r.h) + Math.max(2, Math.round(fs*0.18));
-  x = Math.min(Math.max(0, x), Math.max(0, W - bw));
+  if(y < vp.y) y = Math.round(r.y + r.h) + Math.max(2, Math.round(fs*0.18));
+  x = Math.min(Math.max(vp.x, x), Math.max(vp.x, vp.x + vp.w - bw));
   ctx.globalAlpha = .9; ctx.fillStyle = colorFor(id); ctx.fillRect(x, y, bw, bh); ctx.globalAlpha = 1;
   ctx.fillStyle = labelTextColor(id); ctx.fillText(text, x + padX, y + padY);
   ctx.restore();
 }
 /* ---- 오류 배지 / 선택 강조 ---- */
-function drawErrBadge(ctx, r, num, W, H){
-  const u = Math.max(2, Math.min(W,H)/300), pad = u*1.5;
+function drawErrBadge(ctx, r, num, vp){
+  const u = Math.max(2, Math.min(vp.w, vp.h)/300), pad = u*1.5;
   const x0 = r.x - pad, y0 = r.y - pad, w = Math.max(r.w, u*2) + pad*2, h = Math.max(r.h, u*2) + pad*2;
   ctx.save();
   ctx.setLineDash([u*5, u*3]);
   ctx.lineWidth = Math.max(2, VIEW.lineW + u); ctx.strokeStyle = '#ff2d2d';
   ctx.strokeRect(x0, y0, w, h);
   ctx.setLineDash([]);
-  const rad = Math.max(11, Math.min(W,H)/40);
-  let bx = Math.min(Math.max(x0 + rad, rad), W - rad), by = Math.max(y0 - rad - u, rad);
+  const rad = Math.max(11, Math.min(vp.w, vp.h)/40);
+  /* 번호 배지는 오른쪽 위 바깥에 — 왼쪽 위는 클래스 이름 칩 자리라 겹친다 */
+  let bx = Math.min(Math.max(x0 + w + rad*0.2, vp.x + rad), vp.x + vp.w - rad);
+  let by = Math.max(y0 - rad - u, vp.y + rad);
   ctx.beginPath(); ctx.arc(bx, by, rad, 0, Math.PI*2);
   ctx.fillStyle = '#ff2d2d'; ctx.fill();
   ctx.lineWidth = Math.max(1.5, rad*0.12); ctx.strokeStyle = '#fff'; ctx.stroke();
@@ -132,15 +163,15 @@ function drawErrBadge(ctx, r, num, W, H){
   ctx.fillText(String(num), bx, by + 1);
   ctx.restore();
 }
-function drawSelHighlight(ctx, r, W, H){
-  const u = Math.max(2, Math.min(W,H)/300);
+function drawSelHighlight(ctx, r, vp){
+  const u = Math.max(2, Math.min(vp.w, vp.h)/300);
   ctx.save();
   ctx.lineWidth = Math.max(2, VIEW.lineW + u*1.5); ctx.strokeStyle = '#ffd400';
   ctx.strokeRect(r.x - u*2.5, r.y - u*2.5, Math.max(r.w, u) + u*5, Math.max(r.h, u) + u*5);
   ctx.restore();
 }
-function drawPointErr(ctx, px, py, num, W, H){
-  const u = Math.max(2, Math.min(W,H)/300), r = Math.max(12, Math.min(W,H)/38);
+function drawPointErr(ctx, px, py, num, vp){
+  const u = Math.max(2, Math.min(vp.w, vp.h)/300), r = Math.max(12, Math.min(vp.w, vp.h)/38);
   ctx.save();
   ctx.strokeStyle = '#ff2d2d'; ctx.lineWidth = Math.max(2, VIEW.lineW + u);
   ctx.beginPath();
@@ -156,8 +187,8 @@ function drawPointErr(ctx, px, py, num, W, H){
   ctx.fillText(String(num), bx, by + 1);
   ctx.restore();
 }
-function drawPointSel(ctx, px, py, W, H){
-  const u = Math.max(2, Math.min(W,H)/300), r = Math.max(15, Math.min(W,H)/30);
+function drawPointSel(ctx, px, py, vp){
+  const u = Math.max(2, Math.min(vp.w, vp.h)/300), r = Math.max(15, Math.min(vp.w, vp.h)/30);
   ctx.save();
   ctx.strokeStyle = '#ffd400'; ctx.lineWidth = Math.max(2, VIEW.lineW + u*1.5);
   ctx.beginPath(); ctx.arc(px, py, r, 0, Math.PI*2); ctx.stroke();
@@ -175,13 +206,17 @@ function drawPointSel(ctx, px, py, W, H){
 function drawScene(canvas, img, shapes, opts){
   opts = opts || {};
   const W = img.naturalWidth, H = img.naturalHeight;
-  canvas.width = W; canvas.height = H;
+  /* '라벨 영역만' 이면 어노테이션을 감싸는 부분만 잘라서 그린다 (좌표계는 원본 그대로) */
+  const crop = VIEW.fitAnn ? annBounds(shapes, opts.errors, W, H) : null;
+  const vp = crop || {x:0, y:0, w:W, h:H};
+  canvas.width = vp.w; canvas.height = vp.h;
   const ctx = canvas.getContext('2d');
+  ctx.translate(-vp.x, -vp.y);
   ctx.drawImage(img, 0, 0);
-  if(!(opts.force || VIEW.show)) return { W, H };
+  if(!(opts.force || VIEW.show)){ ctx.setTransform(1,0,0,1,0,0); return { W, H, vp }; }
 
   const lw = VIEW.lineW;
-  const glow = Math.min(6, Math.max(2, Math.round(Math.min(W,H)/500) + lw));
+  const glow = Math.min(6, Math.max(2, Math.round(Math.min(vp.w, vp.h)/500) + lw));
   const drawn = [];
   /* 1) 채우기 (폴리곤/원) */
   if(VIEW.fillAlpha > 0){
@@ -209,7 +244,7 @@ function drawScene(canvas, img, shapes, opts){
   for(const sh of drawn){
     ctx.strokeStyle = colorFor(sh.cls);
     pathShape(ctx, sh, W, H); ctx.stroke();
-    if(VIEW.vertices) drawVertices(ctx, sh, W, H, colorFor(sh.cls));
+    if(VIEW.vertices) drawVertices(ctx, sh, W, H, colorFor(sh.cls), vp);
   }
   ctx.restore();
 
@@ -221,7 +256,7 @@ function drawScene(canvas, img, shapes, opts){
       if(!visibleShape(sh)) continue;
       if(once && seen.has(sh.cls)) continue;
       seen.add(sh.cls);
-      drawClassLabel(ctx, shapeRect(sh, W, H), `${sh.cls}: ${CLS.nameOf(sh.cls)}`, sh.cls, W, H);
+      drawClassLabel(ctx, shapeRect(sh, W, H), `${sh.cls}: ${CLS.nameOf(sh.cls)}`, sh.cls, vp);
     }
   }
   /* 5) 오류 배지 */
@@ -229,21 +264,22 @@ function drawScene(canvas, img, shapes, opts){
   errs.forEach((e, n) => {
     if(e.kind === 'shape'){
       const sh = shapes[e.i]; if(!sh || !visibleShape(sh)) return;
-      drawErrBadge(ctx, shapeRect(sh, W, H), n+1, W, H);
-    } else drawPointErr(ctx, e.x*W, e.y*H, n+1, W, H);
+      drawErrBadge(ctx, shapeRect(sh, W, H), n+1, vp);
+    } else drawPointErr(ctx, e.x*W, e.y*H, n+1, vp);
   });
   /* 6) 선택 강조 */
   const sel = opts.sel;
   if(sel){
     if(sel.mode === 'shape' && shapes[sel.i]){
       const sh = shapes[sel.i];
-      drawSelHighlight(ctx, shapeRect(sh, W, H), W, H);
+      drawSelHighlight(ctx, shapeRect(sh, W, H), vp);
       ctx.save(); ctx.strokeStyle = '#ffd400'; ctx.lineWidth = Math.max(2, lw + 1);
       pathShape(ctx, sh, W, H); ctx.stroke(); ctx.restore();
-      drawVertices(ctx, sh, W, H, '#ffd400');
-    } else if(sel.mode === 'point') drawPointSel(ctx, sel.x*W, sel.y*H, W, H);
+      drawVertices(ctx, sh, W, H, '#ffd400', vp);
+    } else if(sel.mode === 'point') drawPointSel(ctx, sel.x*W, sel.y*H, vp);
   }
-  return { W, H };
+  ctx.setTransform(1,0,0,1,0,0);   // 이후 이 캔버스에 덧그리는 코드(배너 등)를 위해 원상복구
+  return { W, H, vp };
 }
 
 /* ======================= 히트 테스트 ======================= */
