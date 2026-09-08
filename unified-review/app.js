@@ -27,6 +27,9 @@ const S = {
   fmts:   new Set(),
   badFiles: [],        // 형식을 인식하지 못한 라벨 파일 {name, reason}
   namesFile: null,     // 사용자가 고른 클래스 이름 파일 (라벨을 새로 열어도 유지)
+  seen: new Set(),     // 확대해서 본 이미지 (카드 테두리로 표시)
+  lastViewed: null,    // {base, si} 마지막으로 본 카드 — 닫으면 여기로 돌아간다
+  returnTo: null,      // {page, scrollY, base, si} 라이트박스를 연 시점의 위치
   items: [], objItems: [],
   page: 0, view: 'image',
   errors: new Map(),   // base -> [err]
@@ -54,6 +57,35 @@ function saveErrors(){
   updateErrStat();
 }
 
+/* ===================== 본 이미지 기록 (어디까지 봤는지) ===================== */
+const SEEN_KEY = 'unified_review_seen_v1';
+function loadSeen(){
+  try{
+    const a = JSON.parse(localStorage.getItem(SEEN_KEY) || '[]');
+    if(Array.isArray(a)) return new Set(a);
+  }catch(e){}
+  return new Set();
+}
+let seenTimer;
+function saveSeen(){
+  clearTimeout(seenTimer);
+  seenTimer = setTimeout(() => {
+    try{ localStorage.setItem(SEEN_KEY, JSON.stringify([...S.seen])); }catch(e){}
+  }, 400);
+}
+function markSeen(base){
+  if(!base || S.seen.has(base)) return;
+  S.seen.add(base); saveSeen(); updateSeenStat();
+}
+function updateSeenStat(){
+  const el = $('sSeen'); if(!el) return;
+  if(!S.images.size){ el.textContent = '본 0'; return; }
+  let n = 0; for(const [b] of S.images) if(S.seen.has(b)) n++;
+  el.textContent = `본 ${n} / ${S.images.size}`;
+  el.classList.toggle('done', n > 0 && n === S.images.size);
+  el.title = '확대해서 본 이미지 수 — 카드 테두리가 초록색으로 바뀝니다.';
+}
+
 /* ========================= 파일 불러오기 ========================= */
 /* 폴더를 새로 열면 '그 폴더만' 보이도록 이전 것은 비운다 */
 $('imgIn').addEventListener('change', async e => {
@@ -64,7 +96,7 @@ $('imgIn').addEventListener('change', async e => {
   }
   S.images.clear(); releaseUrls(); thumbCache.clear();
   for(const f of files) S.images.set(baseOf(f.name), {file:f, name:f.name});
-  if(lbOn()) closeLightbox();
+  if(lbOn()) closeLightbox(false);
   S.page = 0;
   await refresh();
   e.target.value = '';                 // 같은 폴더를 다시 골라도 반응하도록
@@ -101,7 +133,7 @@ async function ingestLabels(fileList){
   }
   if(!confirmDiscardEdits()) return;
   clearLabels();                        // 새로 고른 라벨만 보이게 (이전 것은 비움)
-  if(lbOn()) closeLightbox();
+  if(lbOn()) closeLightbox(false);
   S.page = 0;
   const CONC = 48;
   for(let i = 0; i < files.length; i += CONC){
@@ -259,6 +291,7 @@ function updateStats(){
   $('sObjs').textContent = `객체 ${objs}`;
   const FMT_LABEL = {yolo:'YOLO', voc:'VOC XML', labelme:'LabelMe', coco:'COCO', labelit:'labelit.pro'};
   $('sFmt').textContent = '포맷 ' + ([...S.fmts].map(f => FMT_LABEL[f] || f).join(' + ') || '–');
+  updateSeenStat();
   const missImgs = [...S.docs.keys()].filter(b => !S.images.has(b)).length;
   let msg;
   if(S.badFiles && S.badFiles.length){       // 못 읽은 파일이 있으면 먼저 알린다
@@ -394,10 +427,14 @@ async function renderImageGrid(grid, my){
   for(const it of slice){
     if(my !== renderSeq) return;
     const card = document.createElement('div'); card.className = 'card';
+    card.dataset.base = it.base;
+    const seen = VIEW.markSeen && S.seen.has(it.base);
+    if(seen) card.classList.add('seen');
+    if(S.lastViewed && S.lastViewed.base === it.base) card.classList.add('current');
     const wrap = document.createElement('div'); wrap.className = 'cvwrap';
     const cv = document.createElement('canvas'); wrap.appendChild(cv);
     const cap = document.createElement('div'); cap.className = 'cap';
-    cap.innerHTML = `<span class="nm" title="${esc(it.name)}">${highlight(it.name)}</span>` +
+    cap.innerHTML = `<span class="nm" title="${esc(it.name)}">${seen ? '<span class="seen-tick" title="본 이미지">✓</span>' : ''}${highlight(it.name)}</span>` +
       `<span class="ct ${it.count ? '' : 'empty'}">${it.count} obj${it.errCount ? ` · <span class="badge-err">⚠${it.errCount}</span>` : ''}</span>`;
     card.appendChild(wrap); card.appendChild(cap); grid.appendChild(card);
     try{
@@ -465,6 +502,10 @@ async function renderObjectGrid(grid, my){
   const cells = new Map();
   for(const o of slice){
     const card = document.createElement('div'); card.className = 'card ocard';
+    card.dataset.base = o.base; card.dataset.si = o.si;
+    if(VIEW.markSeen && S.seen.has(o.base)) card.classList.add('seen');
+    if(S.lastViewed && S.lastViewed.base === o.base &&
+       (S.lastViewed.si == null || S.lastViewed.si === o.si)) card.classList.add('current');
     const wrap = document.createElement('div'); wrap.className = 'cvwrap';
     const cv = document.createElement('canvas'); wrap.appendChild(cv);
     const cap = document.createElement('div'); cap.className = 'cap';
@@ -522,17 +563,47 @@ let loupeZoom = 3, loupeEnabled = true, lastMouse = null;   // 돋보기는 기�
 
 async function openLightbox(idx, focusSi){
   if(idx < 0 || idx >= S.items.length) return;
+  /* 카드로 돌아왔을 때 보던 자리를 그대로 복원하기 위해 위치를 기억 */
+  S.returnTo = {page:S.page, scrollY:window.scrollY,
+                base:S.items[idx] && S.items[idx].base, si:focusSi != null ? focusSi : null};
   S.lbIdx = idx; $('lb').classList.add('on'); $('side').classList.add('on');
   lastMouse = null; hideLoupe();
   $('lbcv').style.cursor = loupeEnabled ? 'none' : 'crosshair';
   const it = S.items[idx];
   S.selBase = it.base;
   S.sel = (focusSi != null && shapesOf(it.base)[focusSi]) ? {mode:'shape', i:focusSi} : null;
+  S.lastViewed = {base:it.base, si:focusSi != null ? focusSi : null};
+  markSeen(it.base);
   renderSide(); await drawLightbox();
 }
-function closeLightbox(){
+/* restore=false 면 위치 복원 없이 닫기만 (폴더를 새로 여는 경우) */
+async function closeLightbox(restore){
   $('lb').classList.remove('on'); $('side').classList.remove('on');
-  hideLoupe(); renderPage();
+  hideLoupe();
+  if(restore === false){ S.returnTo = null; return; }
+  const back = S.returnTo || {};
+  const cur = S.items[S.lbIdx];
+  let base = cur ? cur.base : back.base, si = null;
+  if(S.view === 'object'){
+    /* 객체 모아보기는 열었던 그 객체 카드로 (앞뒤로 넘겼으면 같은 이미지의 첫 객체로) */
+    S.page = back.page != null ? back.page : S.page;
+    if(back.base === base) si = back.si;
+  } else {
+    const per = +$('perPage').value;
+    S.page = Math.floor(S.lbIdx / per);          // ←/→ 로 다른 페이지까지 넘어갔을 수 있다
+  }
+  await renderPage();
+  scrollToCard(base, si, back.scrollY);
+  S.returnTo = null;
+}
+/* 카드 그리드에서 해당 카드를 화면 가운데로 */
+function scrollToCard(base, si, fallbackY){
+  if(!base){ if(fallbackY != null) window.scrollTo(0, fallbackY); return; }
+  const esc = window.CSS && CSS.escape ? CSS.escape(base) : base.replace(/["\\]/g, '\\$&');
+  let el = si != null ? $('grid').querySelector(`.card[data-base="${esc}"][data-si="${si}"]`) : null;
+  if(!el) el = $('grid').querySelector(`.card[data-base="${esc}"]`);
+  if(el) el.scrollIntoView({block:'center', inline:'nearest'});
+  else if(fallbackY != null) window.scrollTo(0, fallbackY);
 }
 async function drawLightbox(){
   const it = S.items[S.lbIdx]; if(!it) return;
@@ -554,6 +625,8 @@ function lbStep(d){
   const n = S.lbIdx + d;
   if(n < 0 || n >= S.items.length) return;
   S.lbIdx = n; S.selBase = S.items[n].base; S.sel = null;
+  S.lastViewed = {base:S.items[n].base, si:null};
+  markSeen(S.items[n].base);
   renderSide(); drawLightbox();
 }
 
@@ -1422,7 +1495,7 @@ function saveSettings(){
     localStorage.setItem(SET_KEY, JSON.stringify({
       cardSize:$('cardSize').value, perPage:$('perPage').value,
       lineW:VIEW.lineW, labelScale:VIEW.labelScale, fillAlpha:VIEW.fillAlpha, labelMode:VIEW.labelMode,
-      show:VIEW.show, vertices:VIEW.vertices, fitAnn:VIEW.fitAnn,
+      show:VIEW.show, vertices:VIEW.vertices, fitAnn:VIEW.fitAnn, markSeen:VIEW.markSeen,
       loupe:loupeEnabled, zoom:loupeZoom
     }));
   }catch(e){}
@@ -1438,14 +1511,23 @@ function applySettings(o){
   if(o.show != null){ VIEW.show = !!o.show; $('showShapes').checked = VIEW.show; }
   if(o.vertices != null){ VIEW.vertices = !!o.vertices; $('showVerts').checked = VIEW.vertices; }
   if(o.fitAnn != null){ VIEW.fitAnn = !!o.fitAnn; $('fitAnn').checked = VIEW.fitAnn; }
+  if(o.markSeen != null){ VIEW.markSeen = !!o.markSeen; $('markSeen').checked = VIEW.markSeen; }
   if(o.loupe != null){ loupeEnabled = !!o.loupe; $('loupeOn').checked = loupeEnabled; }
   if(o.zoom != null) loupeZoom = +o.zoom;
   $('grid').style.setProperty('--card', $('cardSize').value + 'px');
   syncDispLabels();
 }
+$('markSeen').addEventListener('change', e => {
+  VIEW.markSeen = e.target.checked; saveSettings(); renderPage();
+});
+$('clearSeen').addEventListener('click', () => {
+  if(!S.seen.size){ alert('본 기록이 없습니다.'); return; }
+  if(!confirm(`「본 이미지」 표시 ${S.seen.size}건을 지울까요?`)) return;
+  S.seen.clear(); S.lastViewed = null; saveSeen(); updateSeenStat(); renderPage();
+});
 $('dispReset').addEventListener('click', () => {
   applySettings({cardSize:300, perPage:'60', lineW:2, labelScale:1, fillAlpha:0.14, labelMode:'class',
-                 show:true, vertices:false, fitAnn:false, loupe:true, zoom:3});
+                 show:true, vertices:false, fitAnn:false, markSeen:true, loupe:true, zoom:3});
   saveSettings(); redrawAll();
 });
 
@@ -1509,8 +1591,10 @@ $('clearErrors').addEventListener('click', () => {
 
 /* ========================= 초기화 ========================= */
 S.errors = loadErrors();
+S.seen = loadSeen();
 try{ applySettings(JSON.parse(localStorage.getItem(SET_KEY) || 'null')); }catch(e){ syncDispLabels(); }
 syncDispLabels();
 updateErrStat();
+updateSeenStat();
 buildLegends();
 updateFilterChip();

@@ -211,3 +211,11 @@ header h1 .sub{background:var(--panel2);border:1px solid var(--border);border-ra
 /* 범례 접기 */
 .lgset .lg.more{background:var(--panel2);color:var(--muted);border-style:dashed}
 .lgset .lg.allon{background:var(--panel2);color:var(--muted)}
+
+/* ===== 본 이미지 표시 (어디까지 봤는지) ===== */
+.card.seen{border-color:#7dc0a0;box-shadow:0 0 0 1px rgba(46,158,106,.18),0 8px 24px -16px rgba(18,28,46,.18)}
+.card.seen .cap{background:rgba(46,158,106,.06)}
+.seen-tick{color:var(--good);font-weight:700;margin-right:4px}
+.card.current{border-color:var(--blue-2);box-shadow:0 0 0 2px var(--blue-2),0 10px 26px -14px rgba(18,28,46,.35)}
+.card.current.seen{border-color:var(--good);box-shadow:0 0 0 2px var(--good),0 10px 26px -14px rgba(18,28,46,.35)}
+.pill.done{background:#e6f4ec;border-color:#9ed3b8;color:#1d6b47;font-weight:600}

@@ -11,6 +11,7 @@ const VIEW = {
   fillAlpha: 0.14,     // 폴리곤 채우기 투명도 (0이면 외곽선만)
   vertices: false,     // 꼭짓점 점 표시
   fitAnn: false,       // 어노테이션이 있는 영역만 잘라 크게 보기
+  markSeen: true,      // 확대해서 본 이미지 카드를 표시
   classOff: new Set(), // 숨긴 클래스 id
   kindOff: new Set()   // 숨긴 도형 종류
 };
