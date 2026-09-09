@@ -219,3 +219,16 @@ header h1 .sub{background:var(--panel2);border:1px solid var(--border);border-ra
 .card.current{border-color:var(--blue-2);box-shadow:0 0 0 2px var(--blue-2),0 10px 26px -14px rgba(18,28,46,.35)}
 .card.current.seen{border-color:var(--good);box-shadow:0 0 0 2px var(--good),0 10px 26px -14px rgba(18,28,46,.35)}
 .pill.done{background:#e6f4ec;border-color:#9ed3b8;color:#1d6b47;font-weight:600}
+
+/* ===== 페이지 이동 ===== */
+#pager .btn{padding:6px 11px}
+#pager .pg-nums{display:inline-flex;gap:4px;align-items:center;flex-wrap:wrap;justify-content:center}
+#pager .pg-num{min-width:34px;padding:6px 8px;font-variant-numeric:tabular-nums}
+#pager .pg-num.on{background:var(--blue-2);border-color:var(--blue-2);color:var(--text);font-weight:700;cursor:default}
+#pager .pg-gap{color:var(--muted);padding:0 2px;user-select:none}
+#pager .pg-jump{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:var(--muted);
+  background:var(--panel);border:1px solid var(--border);border-radius:9px;padding:4px 9px}
+#pager .pg-jump input{width:62px;background:var(--panel2);border:1px solid var(--border);color:var(--text);
+  border-radius:7px;padding:5px 7px;font-size:13px;text-align:right;font-variant-numeric:tabular-nums}
+#pager .pg-jump input:focus{outline:none;border-color:var(--accent)}
+#pager .pg-go{padding:5px 10px;font-size:12px}

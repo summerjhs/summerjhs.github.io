@@ -539,21 +539,69 @@ function totalPages(){
   const n = S.view === 'object' ? S.objItems.length : S.items.length;
   return { pages: Math.max(1, Math.ceil(n / per)), n };
 }
+function gotoPage(n){
+  const {pages} = totalPages();
+  const t = Math.max(0, Math.min(pages - 1, n));
+  if(t === S.page) return;
+  S.page = t; renderPage(); window.scrollTo(0, 0);
+}
+/* 앞뒤 2칸과 처음·끝만 남기고 중간은 … 으로 (페이지가 많아도 한 줄) */
+function pageWindow(cur, pages){
+  const out = [], add = v => { if(out[out.length-1] !== v) out.push(v); };
+  add(1);
+  if(cur - 2 > 2) add('…');
+  for(let i = Math.max(2, cur - 2); i <= Math.min(pages - 1, cur + 2); i++) add(i);
+  if(cur + 2 < pages - 1) add('…');
+  if(pages > 1) add(pages);
+  return out;
+}
 function renderPager(){
   const {pages, n} = totalPages();
   if(S.page >= pages) S.page = pages - 1;
   const p = $('pager'); p.innerHTML = '';
   if(!n) return;
-  const mk = (t, fn, dis) => { const b = document.createElement('button'); b.className = 'btn';
-    b.textContent = t; b.disabled = !!dis; b.onclick = fn; return b; };
-  const go = fn => { fn(); renderPage(); window.scrollTo(0, 0); };
-  p.appendChild(mk('« 처음', () => go(() => S.page = 0), S.page === 0));
-  p.appendChild(mk('‹ 이전', () => go(() => S.page--), S.page === 0));
+  const mk = (t, fn, dis, cls) => { const b = document.createElement('button');
+    b.className = 'btn' + (cls ? ' ' + cls : ''); b.textContent = t; b.disabled = !!dis; b.onclick = fn; return b; };
+
+  p.appendChild(mk('«', () => gotoPage(0), S.page === 0, 'pg-step'));
+  p.appendChild(mk('‹ 이전', () => gotoPage(S.page - 1), S.page === 0, 'pg-step'));
+
+  /* 페이지 번호 직접 클릭 */
+  const nums = document.createElement('span'); nums.className = 'pg-nums';
+  for(const v of pageWindow(S.page + 1, pages)){
+    if(v === '…'){
+      const g = document.createElement('span'); g.className = 'pg-gap'; g.textContent = '…';
+      nums.appendChild(g); continue;
+    }
+    const b = mk(String(v), () => gotoPage(v - 1), false, 'pg-num' + (v === S.page + 1 ? ' on' : ''));
+    nums.appendChild(b);
+  }
+  p.appendChild(nums);
+
+  p.appendChild(mk('다음 ›', () => gotoPage(S.page + 1), S.page >= pages - 1, 'pg-step'));
+  p.appendChild(mk('»', () => gotoPage(pages - 1), S.page >= pages - 1, 'pg-step'));
+
+  /* 페이지가 많으면 번호를 직접 입력해 이동 */
+  if(pages > 3){
+    const jump = document.createElement('span'); jump.className = 'pg-jump';
+    const inp = document.createElement('input');
+    inp.type = 'number'; inp.min = 1; inp.max = pages; inp.value = S.page + 1;
+    inp.title = '페이지 번호를 입력하고 Enter';
+    const move = () => { const v = parseInt(inp.value, 10); if(v >= 1 && v <= pages) gotoPage(v - 1); else inp.value = S.page + 1; };
+    inp.onkeydown = e => { if(e.key === 'Enter'){ e.preventDefault(); move(); } e.stopPropagation(); };
+    inp.onblur = () => { inp.value = S.page + 1; };
+    jump.appendChild(document.createTextNode('이동 '));
+    jump.appendChild(inp);
+    jump.appendChild(document.createTextNode(` / ${pages}`));
+    const goBtn = mk('이동', move, false, 'pg-go');
+    jump.appendChild(goBtn);
+    p.appendChild(jump);
+  }
+
   const info = document.createElement('span'); info.className = 'pill stat';
-  info.textContent = `${S.page+1} / ${pages}  (${n}${S.view === 'object' ? '객체' : '장'})`;
+  info.textContent = pages > 3 ? `총 ${n}${S.view === 'object' ? '객체' : '장'}`
+                               : `${S.page+1} / ${pages}  ·  ${n}${S.view === 'object' ? '객체' : '장'}`;
   p.appendChild(info);
-  p.appendChild(mk('다음 ›', () => go(() => S.page++), S.page >= pages - 1));
-  p.appendChild(mk('끝 »', () => go(() => S.page = pages - 1), S.page >= pages - 1));
 }
 
 /* ========================= 라이트박스 ========================= */
