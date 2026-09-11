@@ -608,6 +608,8 @@ function renderPager(){
 const lbOn = () => $('lb').classList.contains('on');
 const LOUPE_SIZE = 260;
 let loupeZoom = 3, loupeEnabled = true, lastMouse = null;   // 돋보기는 기본 켜짐 (마우스를 올리면 확대)
+/* 커서 가이드: 마우스 포인터에 '이 크기' 박스를 그려 작은 객체의 크기를 가늠 */
+let cursorBox = false, cursorW = 5, cursorH = 5;
 
 async function openLightbox(idx, focusSi){
   if(idx < 0 || idx >= S.items.length) return;
@@ -616,7 +618,8 @@ async function openLightbox(idx, focusSi){
                 base:S.items[idx] && S.items[idx].base, si:focusSi != null ? focusSi : null};
   S.lbIdx = idx; $('lb').classList.add('on'); $('side').classList.add('on');
   lastMouse = null; hideLoupe();
-  $('lbcv').style.cursor = loupeEnabled ? 'none' : 'crosshair';
+  $('lbcv').style.cursor = (loupeEnabled || cursorBox) ? 'none' : 'crosshair';
+  $('guidebox').classList.remove('on');
   const it = S.items[idx];
   S.selBase = it.base;
   S.sel = (focusSi != null && shapesOf(it.base)[focusSi]) ? {mode:'shape', i:focusSi} : null;
@@ -627,7 +630,7 @@ async function openLightbox(idx, focusSi){
 /* restore=false 면 위치 복원 없이 닫기만 (폴더를 새로 여는 경우) */
 async function closeLightbox(restore){
   $('lb').classList.remove('on'); $('side').classList.remove('on');
-  hideLoupe();
+  hideLoupe(); $('guidebox').classList.remove('on');
   if(restore === false){ S.returnTo = null; return; }
   const back = S.returnTo || {};
   const cur = S.items[S.lbIdx];
@@ -906,6 +909,31 @@ function renderSide(){
   };
 }
 
+/* ---- 커서 가이드 박스 ---- */
+function updateGuide(){
+  const gb = $('guidebox'); if(!gb) return;
+  if(!cursorBox || !lastMouse || !lbOn()){ gb.classList.remove('on'); return; }
+  /* 돋보기가 켜져 있으면 커서 주변이 돋보기에 가려지므로, 가이드는 돋보기 안에만 그린다 */
+  if(loupeEnabled){ gb.classList.remove('on'); return; }
+  const cv = $('lbcv'), r = cv.getBoundingClientRect();
+  const mx = lastMouse.x - r.left, my = lastMouse.y - r.top;
+  if(mx < 0 || my < 0 || mx > r.width || my > r.height){ gb.classList.remove('on'); return; }
+  /* 캔버스 1px = 이미지 1px 이므로 표시 배율만 곱하면 된다 ('라벨 영역만'으로 잘려도 동일) */
+  const sx = r.width / cv.width, sy = r.height / cv.height;
+  const w = Math.max(1, cursorW * sx), h = Math.max(1, cursorH * sy);
+  const stage = $('lbstage').getBoundingClientRect();
+  gb.style.width = w + 'px'; gb.style.height = h + 'px';
+  gb.style.left = (lastMouse.x - stage.left - w/2) + 'px';
+  gb.style.top  = (lastMouse.y - stage.top  - h/2) + 'px';
+  gb.dataset.size = `${cursorW}×${cursorH}px`;
+  gb.classList.add('on');
+}
+function setCursorBox(on){
+  cursorBox = on;
+  $('lbcv').style.cursor = (loupeEnabled || cursorBox) ? 'none' : 'crosshair';
+  updateGuide(); if(loupeEnabled) drawLoupe();
+}
+
 /* ---- 돋보기 ---- */
 function hideLoupe(){ $('loupe').classList.remove('on'); }
 function drawLoupe(){
@@ -920,11 +948,20 @@ function drawLoupe(){
   g.clearRect(0, 0, LOUPE_SIZE, LOUPE_SIZE);
   g.imageSmoothingEnabled = false;
   g.drawImage(cv, sx - src/2, sy - src/2, src, src, 0, 0, LOUPE_SIZE, LOUPE_SIZE);
-  g.strokeStyle = 'rgba(255,255,255,.5)'; g.lineWidth = 1;
-  g.beginPath();
-  g.moveTo(LOUPE_SIZE/2, LOUPE_SIZE/2 - 8); g.lineTo(LOUPE_SIZE/2, LOUPE_SIZE/2 + 8);
-  g.moveTo(LOUPE_SIZE/2 - 8, LOUPE_SIZE/2); g.lineTo(LOUPE_SIZE/2 + 8, LOUPE_SIZE/2);
-  g.stroke();
+  if(cursorBox){
+    /* 돋보기 안에서도 같은 크기(이미지 픽셀 × 배율)로 그려 아주 작은 객체를 판단 */
+    const gw = cursorW * loupeZoom, gh = cursorH * loupeZoom;
+    g.strokeStyle = 'rgba(255,255,255,.85)'; g.lineWidth = 3;
+    g.strokeRect(Math.round((LOUPE_SIZE-gw)/2) + .5, Math.round((LOUPE_SIZE-gh)/2) + .5, Math.round(gw), Math.round(gh));
+    g.strokeStyle = '#ff2fd0'; g.lineWidth = 1;
+    g.strokeRect(Math.round((LOUPE_SIZE-gw)/2) + .5, Math.round((LOUPE_SIZE-gh)/2) + .5, Math.round(gw), Math.round(gh));
+  } else {
+    g.strokeStyle = 'rgba(255,255,255,.5)'; g.lineWidth = 1;
+    g.beginPath();
+    g.moveTo(LOUPE_SIZE/2, LOUPE_SIZE/2 - 8); g.lineTo(LOUPE_SIZE/2, LOUPE_SIZE/2 + 8);
+    g.moveTo(LOUPE_SIZE/2 - 8, LOUPE_SIZE/2); g.lineTo(LOUPE_SIZE/2 + 8, LOUPE_SIZE/2);
+    g.stroke();
+  }
   const stage = $('lbstage').getBoundingClientRect();
   lp.style.left = (lastMouse.x - stage.left - LOUPE_SIZE/2) + 'px';
   lp.style.top  = (lastMouse.y - stage.top  - LOUPE_SIZE/2) + 'px';
@@ -932,7 +969,7 @@ function drawLoupe(){
 }
 function setLoupe(on){
   loupeEnabled = on;
-  $('lbcv').style.cursor = on ? 'none' : 'crosshair';
+  $('lbcv').style.cursor = (on || cursorBox) ? 'none' : 'crosshair';
   on ? drawLoupe() : hideLoupe();
 }
 function setZoom(z){
@@ -942,8 +979,12 @@ function setZoom(z){
 }
 $('loupeOn').addEventListener('change', e => { setLoupe(e.target.checked); saveSettings(); });
 $('loupeZoom').addEventListener('input', e => { setZoom(+e.target.value); saveSettings(); });
-$('lbcv').addEventListener('mousemove', e => { lastMouse = {x:e.clientX, y:e.clientY}; if(loupeEnabled) drawLoupe(); });
-$('lbcv').addEventListener('mouseleave', () => { lastMouse = null; hideLoupe(); });
+$('lbcv').addEventListener('mousemove', e => {
+  lastMouse = {x:e.clientX, y:e.clientY};
+  if(loupeEnabled) drawLoupe();
+  if(cursorBox) updateGuide();
+});
+$('lbcv').addEventListener('mouseleave', () => { lastMouse = null; hideLoupe(); updateGuide(); });
 /* 캔버스 위 좌표 → 원본 이미지 픽셀 좌표 (잘라 보기 상태를 반영) */
 function lbPoint(e){
   const cv = $('lbcv'), r = cv.getBoundingClientRect();
@@ -989,6 +1030,7 @@ document.addEventListener('keydown', e => {
   if(e.code === 'KeyD'){ lbStep(-1); e.preventDefault(); return; }
   if(e.code === 'KeyF'){ lbStep(1);  e.preventDefault(); return; }
   if(e.code === 'KeyZ'){ $('loupeOn').checked = !$('loupeOn').checked; setLoupe($('loupeOn').checked); e.preventDefault(); return; }
+  if(e.code === 'KeyG'){ $('cursorBox').checked = !$('cursorBox').checked; setCursorBox($('cursorBox').checked); saveSettings(); e.preventDefault(); return; }
   if(e.key === 'Escape'){ closeLightbox(); return; }
   if(e.key === 'ArrowLeft'){ lbStep(-1); return; }
   if(e.key === 'ArrowRight'){ lbStep(1); return; }
@@ -1544,6 +1586,7 @@ function saveSettings(){
       cardSize:$('cardSize').value, perPage:$('perPage').value,
       lineW:VIEW.lineW, labelScale:VIEW.labelScale, fillAlpha:VIEW.fillAlpha, labelMode:VIEW.labelMode,
       show:VIEW.show, vertices:VIEW.vertices, fitAnn:VIEW.fitAnn, markSeen:VIEW.markSeen,
+      cursorBox, cursorW, cursorH,
       loupe:loupeEnabled, zoom:loupeZoom
     }));
   }catch(e){}
@@ -1560,11 +1603,30 @@ function applySettings(o){
   if(o.vertices != null){ VIEW.vertices = !!o.vertices; $('showVerts').checked = VIEW.vertices; }
   if(o.fitAnn != null){ VIEW.fitAnn = !!o.fitAnn; $('fitAnn').checked = VIEW.fitAnn; }
   if(o.markSeen != null){ VIEW.markSeen = !!o.markSeen; $('markSeen').checked = VIEW.markSeen; }
+  if(o.cursorBox != null){ cursorBox = !!o.cursorBox; $('cursorBox').checked = cursorBox; }
+  if(o.cursorW != null){ cursorW = +o.cursorW; $('cursorW').value = cursorW; }
+  if(o.cursorH != null){ cursorH = +o.cursorH; $('cursorH').value = cursorH; }
   if(o.loupe != null){ loupeEnabled = !!o.loupe; $('loupeOn').checked = loupeEnabled; }
   if(o.zoom != null) loupeZoom = +o.zoom;
   $('grid').style.setProperty('--card', $('cardSize').value + 'px');
   syncDispLabels();
 }
+$('cursorBox').addEventListener('change', e => { setCursorBox(e.target.checked); saveSettings(); });
+function readCursorSize(){
+  const clamp = (v, d) => { v = Math.round(+v); return (Number.isFinite(v) && v >= 1 && v <= 500) ? v : d; };
+  cursorW = clamp($('cursorW').value, cursorW);
+  cursorH = clamp($('cursorH').value, cursorH);
+  $('cursorW').value = cursorW; $('cursorH').value = cursorH;
+  updateGuide(); if(loupeEnabled) drawLoupe();
+  saveSettings();
+}
+['cursorW','cursorH'].forEach(id => {
+  $(id).addEventListener('change', readCursorSize);
+  $(id).addEventListener('keydown', e => {
+    e.stopPropagation();                       // 숫자키가 오류 종류 단축키로 새지 않도록
+    if(e.key === 'Enter'){ e.preventDefault(); readCursorSize(); }
+  });
+});
 $('markSeen').addEventListener('change', e => {
   VIEW.markSeen = e.target.checked; saveSettings(); renderPage();
 });
@@ -1575,7 +1637,8 @@ $('clearSeen').addEventListener('click', () => {
 });
 $('dispReset').addEventListener('click', () => {
   applySettings({cardSize:300, perPage:'60', lineW:2, labelScale:1, fillAlpha:0.14, labelMode:'class',
-                 show:true, vertices:false, fitAnn:false, markSeen:true, loupe:true, zoom:3});
+                 show:true, vertices:false, fitAnn:false, markSeen:true, loupe:true, zoom:3,
+                 cursorBox:false, cursorW:5, cursorH:5});
   saveSettings(); redrawAll();
 });
 

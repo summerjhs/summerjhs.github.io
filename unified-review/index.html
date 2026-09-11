@@ -4,14 +4,14 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>통합 어노테이션 검수 툴</title>
-<link rel="stylesheet" href="style.css?v=260909a">
+<link rel="stylesheet" href="style.css?v=260911a">
 </head>
 <body>
 
 <header>
   <!-- 1행: 데이터 열기 + 현재 상태 -->
   <div class="row">
-    <h1>통합 어노테이션 검수 툴<span class="sub" id="build" title="빌드 버전 — 최신인지 확인용">260909a</span></h1>
+    <h1>통합 어노테이션 검수 툴<span class="sub" id="build" title="빌드 버전 — 최신인지 확인용">260911a</span></h1>
 
     <label class="file btn primary" title="검수할 이미지가 든 폴더"><span>📁 이미지 폴더</span>
       <input type="file" id="imgIn" webkitdirectory directory multiple></label>
@@ -110,6 +110,14 @@
         <label class="menu-check" title="확대해서 본 이미지의 카드 테두리를 초록색으로"><input type="checkbox" id="markSeen" checked> 본 이미지 표시</label>
         <div class="menu-row"><button class="btn" id="clearSeen" style="width:100%;font-size:12px">본 기록 지우기</button></div>
 
+        <div class="menu-h">커서 가이드</div>
+        <label class="menu-check" title="마우스 포인터에 지정한 픽셀 크기의 박스를 그려, 이만한 객체가 어느 정도인지 가늠합니다"><input type="checkbox" id="cursorBox"> 포인터에 박스 표시 <kbd>G</kbd></label>
+        <div class="menu-row"><span class="ml">박스 크기</span>
+          <input type="number" id="cursorW" min="1" max="500" value="5" title="가로(px)">
+          <span class="mv" style="flex:0 0 10px;text-align:center">×</span>
+          <input type="number" id="cursorH" min="1" max="500" value="5" title="세로(px)">
+          <span class="mv" style="flex:0 0 18px">px</span></div>
+
         <div class="menu-h">돋보기</div>
         <label class="menu-check"><input type="checkbox" id="loupeOn" checked> 마우스 위치 확대 <kbd>Z</kbd></label>
         <div class="menu-row"><span class="ml">배율</span>
@@ -168,10 +176,10 @@
   <div id="lbmain">
     <button class="nav prev" title="이전 (←)">‹</button>
     <button class="nav next" title="다음 (→)">›</button>
-    <div id="lbstage"><canvas id="lbcv"></canvas><canvas id="loupe"></canvas></div>
+    <div id="lbstage"><canvas id="lbcv"></canvas><canvas id="loupe"></canvas><div id="guidebox"></div></div>
     <div id="lbcap"></div>
     <div id="lbhint">객체 클릭 → 선택 · 빈 곳 <b>더블클릭</b> → 누락 지점 표시 · <b>마우스를 올리면 돋보기</b>(끄기 <kbd>Z</kbd>) · 배율 <kbd>+</kbd><kbd>-</kbd> ·
-      표시 토글 <kbd>H</kbd> · 라벨 영역만 <kbd>A</kbd> · 이동 <kbd>←</kbd><kbd>→</kbd> 또는 <kbd>D</kbd><kbd>F</kbd> · 다음 객체 <kbd>Tab</kbd></div>
+      표시 토글 <kbd>H</kbd> · 라벨 영역만 <kbd>A</kbd> · 커서 박스 <kbd>G</kbd> · 이동 <kbd>←</kbd><kbd>→</kbd> 또는 <kbd>D</kbd><kbd>F</kbd> · 다음 객체 <kbd>Tab</kbd></div>
   </div>
   <div id="side"></div>
 </div>
@@ -230,8 +238,13 @@
       클래스가 많으면 접혀 있고 <b>+N개 더</b>로 펼칩니다.<br>
       <b>👁 표시</b> 안의 설정(카드 크기·선 굵기·라벨 크기·채우기·돋보기 등)은 브라우저에 기억되어 다음에 열어도 유지됩니다.
       <div class="st-h">버전</div>
-      현재 빌드 <b>260909a</b>. 기능이 예전 그대로라면 브라우저가 이전 파일을 캐시하고 있는 것이니
+      현재 빌드 <b>260911a</b>. 기능이 예전 그대로라면 브라우저가 이전 파일을 캐시하고 있는 것이니
       <kbd>⌘</kbd><kbd>⇧</kbd><kbd>R</kbd>(윈도우는 <kbd>Ctrl</kbd><kbd>F5</kbd>)로 강력 새로고침 하세요.
+      <div class="st-h">커서 가이드 박스</div>
+      「👁 표시 → 커서 가이드」를 켜면 확대 화면에서 <b>마우스 포인터에 지정한 크기의 박스</b>가 따라다닙니다.
+      크기는 <b>5 × 5</b>처럼 가로·세로를 따로 정할 수 있고(이미지 원본 픽셀 기준),
+      돋보기를 켜 두면 돋보기 안에도 같은 크기로 그려져 아주 작은 객체를 판단할 때 쓸 수 있습니다.
+      단축키 <kbd>G</kbd>로 켜고 끕니다.
       <div class="st-h">페이지 이동</div>
       목록 아래 페이지 막대에서 <b>번호를 직접 클릭</b>하거나, 페이지가 6쪽 이상이면 나타나는
       <b>이동</b> 칸에 번호를 넣고 <kbd>Enter</kbd>로 바로 건너뜁니다. <kbd>«</kbd> <kbd>»</kbd> 는 처음·끝.
@@ -248,8 +261,8 @@
   </div>
 </div>
 
-<script src="parsers.js?v=260909a"></script>
-<script src="render.js?v=260909a"></script>
-<script src="app.js?v=260909a"></script>
+<script src="parsers.js?v=260911a"></script>
+<script src="render.js?v=260911a"></script>
+<script src="app.js?v=260911a"></script>
 </body>
 </html>

@@ -232,3 +232,14 @@ header h1 .sub{background:var(--panel2);border:1px solid var(--border);border-ra
   border-radius:7px;padding:5px 7px;font-size:13px;text-align:right;font-variant-numeric:tabular-nums}
 #pager .pg-jump input:focus{outline:none;border-color:var(--accent)}
 #pager .pg-go{padding:5px 10px;font-size:12px}
+
+/* ===== 커서 가이드 박스 (지정 픽셀 크기) ===== */
+#guidebox{position:absolute;pointer-events:none;display:none;box-sizing:border-box;z-index:3;
+  border:1px solid #ff2fd0;outline:1px solid rgba(255,255,255,.75);outline-offset:0}
+#guidebox.on{display:block}
+#guidebox::after{content:attr(data-size);position:absolute;left:50%;top:100%;transform:translate(-50%,4px);
+  white-space:nowrap;font-size:10.5px;color:#fff;background:rgba(255,47,208,.9);
+  padding:1px 5px;border-radius:5px;font-variant-numeric:tabular-nums}
+.menu-row input[type=number]{flex:1;min-width:0;background:var(--panel2);border:1px solid var(--border);
+  color:var(--text);border-radius:7px;padding:4px 6px;font-size:12.5px;text-align:right}
+.menu-row input[type=number]:focus{outline:none;border-color:var(--accent)}
