@@ -84,9 +84,29 @@ function parseYolo(text){
   }
   return shapes;
 }
+/* ---- 좌표 수정(수정 모드)용 공통 헬퍼 ---- */
+const shMoved = sh => !!(sh && sh.moved);
+/* 도형의 바운딩 박스 (좌표계 그대로) */
+function shBox(sh){
+  let minx = Infinity, miny = Infinity, maxx = -Infinity, maxy = -Infinity;
+  const rings = (sh.rings && sh.rings.length) ? sh.rings : [sh.pts];
+  for(const r of rings) for(const p of r){
+    if(p[0] < minx) minx = p[0]; if(p[0] > maxx) maxx = p[0];
+    if(p[1] < miny) miny = p[1]; if(p[1] > maxy) maxy = p[1];
+  }
+  return {x:minx, y:miny, w:maxx-minx, h:maxy-miny};
+}
+function polyArea(pts){
+  let a = 0;
+  for(let i = 0, j = pts.length - 1; i < pts.length; j = i++)
+    a += (pts[j][0] + pts[i][0]) * (pts[j][1] - pts[i][1]);
+  return Math.abs(a / 2);
+}
+
 /* 클래스만 바꾼 YOLO 한 줄 (좌표·형식 그대로 유지) */
 function yoloLine(sh){
-  if(sh.src && sh.src.raw != null) return sh.src.raw.replace(/^(﻿?\s*)\S+/, `$1${sh.cls}`);
+  /* 좌표를 수정했으면 원문 대신 새 좌표로 다시 쓴다 */
+  if(sh.src && sh.src.raw != null && !shMoved(sh)) return sh.src.raw.replace(/^(﻿?\s*)\S+/, `$1${sh.cls}`);
   const f = v => Number.isInteger(v) ? String(v) : (+v.toFixed(6)).toString();
   if(sh.kind === 'box'){
     const [[x1,y1],[x2,y2]] = sh.pts;
@@ -144,6 +164,16 @@ function serializeVoc(doc, shapes){
     if(!sh){ o.parentNode.removeChild(o); return; }         // 삭제된 객체
     const nm = o.getElementsByTagName('name')[0];
     if(nm) nm.textContent = CLS.nameOf(sh.cls);
+    if(!shMoved(sh)) return;
+    const set = (el, tag, v) => { const t = el.getElementsByTagName(tag)[0]; if(t) t.textContent = String(Math.round(v)); };
+    const bb = o.getElementsByTagName('bndbox')[0];
+    if(bb){
+      const b = shBox(sh);
+      set(bb, 'xmin', b.x); set(bb, 'ymin', b.y); set(bb, 'xmax', b.x + b.w); set(bb, 'ymax', b.y + b.h);
+      return;
+    }
+    const pg = o.getElementsByTagName('polygon')[0];
+    if(pg) sh.pts.forEach((pt, i) => { set(pg, 'x'+(i+1), pt[0]); set(pg, 'y'+(i+1), pt[1]); });
   });
   return new XMLSerializer().serializeToString(clone);
 }
@@ -180,6 +210,10 @@ function serializeLabelMe(obj, shapes){
     const sh = keep.get(idx); if(!sh) return null;
     const c = JSON.parse(JSON.stringify(s));
     c.label = CLS.nameOf(sh.cls);
+    if(shMoved(sh)){
+      const arrayStyle = Array.isArray(s.points) && Array.isArray(s.points[0]);
+      c.points = sh.pts.map(p => arrayStyle ? [ +p[0].toFixed(2), +p[1].toFixed(2) ] : {x:+p[0].toFixed(2), y:+p[1].toFixed(2)});
+    }
     return c;
   }).filter(Boolean);
   return JSON.stringify(out, null, 2);
@@ -229,7 +263,7 @@ function parseCoco(obj){
   return { byBase, dims, obj, rle };
 }
 /* 변경(클래스 수정·삭제)을 반영한 COCO JSON 문자열 */
-function serializeCoco(obj, keptAnnSet, clsOfAnn){
+function serializeCoco(obj, keptAnnSet, clsOfAnn, shapeOfAnn){
   const nameToCat = {};
   for(const c of (obj.categories || [])) nameToCat[String(c.name).toLowerCase()] = c.id;
   const out = JSON.parse(JSON.stringify(obj));
@@ -239,6 +273,17 @@ function serializeCoco(obj, keptAnnSet, clsOfAnn){
     if(clsId != null){
       const nm = CLS.nameOf(clsId).toLowerCase();
       if(nameToCat[nm] != null) c.category_id = nameToCat[nm];
+    }
+    const sh = shapeOfAnn && shapeOfAnn.get(a);
+    if(sh && shMoved(sh)){
+      const b = shBox(sh);
+      const r2 = v => +v.toFixed(2);
+      c.bbox = [r2(b.x), r2(b.y), r2(b.w), r2(b.h)];
+      if(sh.kind === 'polygon'){
+        const rings = (sh.rings && sh.rings.length) ? sh.rings : [sh.pts];
+        c.segmentation = rings.map(r => r.flatMap(p => [r2(p[0]), r2(p[1])]));
+        c.area = r2(rings.reduce((t, r) => t + polyArea(r), 0));
+      } else c.area = r2(b.w * b.h);
     }
     return c;
   });
@@ -399,7 +444,31 @@ function applyLabelitLabel(val, field, name){
   else if(field.kind === 'object') val[field.key] = Object.assign({}, val[field.key], {label:name});
   else if(field.kind === 'extra') val.extra = Object.assign({}, val.extra, {label:name});
 }
-function serializeLabelit(records, kept, clsOf, fieldOf){
+/* 수정된 좌표를 labelit value 구조에 되쓰기 */
+function applyLabelitGeom(val, sh){
+  const r2 = v => +v.toFixed(3);
+  const ann = String(val.annotation || '').toUpperCase();
+  if(sh.kind === 'box' && sh.pts.length >= 2){
+    const [[x1,y1],[x2,y2]] = sh.pts;
+    const L = Math.min(x1,x2), T = Math.min(y1,y2), R = Math.max(x1,x2), B = Math.max(y1,y2);
+    if(val.coords) val.coords = {tl:{x:r2(L),y:r2(T)}, tr:{x:r2(R),y:r2(T)}, bl:{x:r2(L),y:r2(B)}, br:{x:r2(R),y:r2(B)}};
+    if(val.object) val.object = Object.assign({}, val.object, {left:r2(L), top:r2(T), width:r2(R-L), height:r2(B-T)});
+    return;
+  }
+  if(sh.kind === 'polygon' && sh.pts.length === 4 && val.coords && ann === 'BOX'){
+    const [a, b, c, d] = sh.pts;      // 회전 박스: 네 꼭짓점 그대로
+    val.coords = {tl:{x:r2(a[0]),y:r2(a[1])}, tr:{x:r2(b[0]),y:r2(b[1])},
+                  br:{x:r2(c[0]),y:r2(c[1])}, bl:{x:r2(d[0]),y:r2(d[1])}};
+    return;
+  }
+  if(sh.kind === 'point'){
+    if(Array.isArray(val.points) && val.points.length) val.points = [{x:r2(sh.pts[0][0]), y:r2(sh.pts[0][1])}];
+    else if(val.object) val.object = Object.assign({}, val.object, {left:r2(sh.pts[0][0]), top:r2(sh.pts[0][1])});
+    return;
+  }
+  val.points = sh.pts.map(p => ({x:r2(p[0]), y:r2(p[1])}));
+}
+function serializeLabelit(records, kept, clsOf, fieldOf, shapeOf){
   const lines = [];
   for(const rec of records){
     const copy = Object.assign({}, rec);
@@ -410,6 +479,8 @@ function serializeLabelit(records, kept, clsOf, fieldOf){
         const cd = JSON.parse(JSON.stringify(d));
         const cls = clsOf.get(d);
         if(cls != null) applyLabelitLabel(cd.value || (cd.value = {}), fieldOf.get(d), CLS.nameOf(cls));
+        const sh = shapeOf && shapeOf.get(d);
+        if(sh && shMoved(sh)) applyLabelitGeom(cd.value || (cd.value = {}), sh);
         nd.push(cd);
       }
       copy[gk] = Object.assign({}, g, {data: nd});

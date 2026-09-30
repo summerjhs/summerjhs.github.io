@@ -30,6 +30,7 @@ const S = {
   seen: new Set(),     // 확대해서 본 이미지 (카드 테두리로 표시)
   lastViewed: null,    // {base, si} 마지막으로 본 카드 — 닫으면 여기로 돌아간다
   returnTo: null,      // {page, scrollY, base, si} 라이트박스를 연 시점의 위치
+  edited: new Set(),   // 수정 모드에서 좌표를 고친 이미지
   items: [], objItems: [],
   page: 0, view: 'image',
   errors: new Map(),   // base -> [err]
@@ -94,7 +95,7 @@ $('imgIn').addEventListener('change', async e => {
     $('hint').textContent = '※ 고른 폴더에서 이미지를 찾지 못했습니다. (jpg·png·bmp·webp·tif)';
     e.target.value = ''; return;
   }
-  S.images.clear(); releaseUrls(); thumbCache.clear();
+  S.images.clear(); releaseUrls(); thumbCache.clear(); clearImgCache();
   for(const f of files) S.images.set(baseOf(f.name), {file:f, name:f.name});
   if(lbOn()) closeLightbox(false);
   S.page = 0;
@@ -206,6 +207,7 @@ function reparseAll(){
 async function refresh(){
   reparseAll();
   S.changed.clear(); S.cocoChanged = false; S.labelitChanged = false;
+  S.edited.clear(); editUndo.length = 0; updateEditStat();
   applyFilterSort();
   buildLegends();
   updateStats();
@@ -394,6 +396,23 @@ function buildLegends(){
 }
 
 /* ========================= 이미지 로드 ========================= */
+/* 확대 화면은 같은 이미지를 반복해서 그리므로 디코드 결과를 캐시한다 (LRU 4장) */
+const imgCache = new Map();
+async function loadImgCached(base, file){
+  const hit = imgCache.get(base);
+  if(hit){ imgCache.delete(base); imgCache.set(base, hit); return hit.im; }
+  const {im, url} = await loadImg(file);
+  imgCache.set(base, {im, url});
+  while(imgCache.size > 4){
+    const k = imgCache.keys().next().value, v = imgCache.get(k);
+    imgCache.delete(k); URL.revokeObjectURL(v.url);
+  }
+  return im;
+}
+function clearImgCache(){
+  for(const [, v] of imgCache) URL.revokeObjectURL(v.url);
+  imgCache.clear();
+}
 function loadImg(file){
   return new Promise((res, rej) => {
     const url = URL.createObjectURL(file);
@@ -659,13 +678,16 @@ function scrollToCard(base, si, fallbackY){
 async function drawLightbox(){
   const it = S.items[S.lbIdx]; if(!it) return;
   try{
-    const {im, url} = await loadImg(it.file);
+    const im = await loadImgCached(it.base, it.file);
+    S.lbImg = im;
     const r = drawScene($('lbcv'), im, shapesOf(it.base), {
       errors: errsOf(it.base),
       sel: (S.selBase === it.base ? S.sel : null)
     });
     S.lbDim = {W:r.W, H:r.H, vp:r.vp};   // '라벨 영역만'으로 잘렸을 때 클릭 좌표 환산에 사용
-    URL.revokeObjectURL(url);
+    if(editMode)                          // 수정 모드: 꼭짓점 핸들을 위에 덧그린다
+      drawEditHandles($('lbcv').getContext('2d'), shapesOf(it.base), r.W, r.H, r.vp, lbIpp(),
+                      (S.selBase === it.base && S.sel && S.sel.mode === 'shape') ? S.sel : null, editHover);
   }catch(e){}
   const d = S.docs.get(it.base);
   const FMT_LABEL = {yolo:'YOLO', voc:'VOC XML', labelme:'LabelMe', coco:'COCO', labelit:'labelit.pro'};
@@ -909,6 +931,161 @@ function renderSide(){
   };
 }
 
+/* =======================================================================
+   수정 모드 — 한 번 켜면 모든 이미지에서 꼭짓점을 끌어 좌표를 고칠 수 있다
+   ======================================================================= */
+let editMode = false;
+let editHover = null;        // {shape, handle:{ring,i,kind}}
+let editDrag = null;         // 진행 중인 끌기
+const editUndo = [];         // 되돌리기 스택 (최근 100개)
+
+/* 도형 좌표를 픽셀로 읽고 쓰기 (YOLO처럼 정규화된 좌표도 그대로 다룬다) */
+function shRings(sh){ return (sh.rings && sh.rings.length) ? sh.rings : [sh.pts]; }
+function shReadPx(sh, W, H){
+  const sx = sh.norm ? W : 1, sy = sh.norm ? H : 1;
+  return shRings(sh).map(r => r.map(p => [p[0]*sx, p[1]*sy]));
+}
+function shWritePx(sh, rings, W, H){
+  const sx = sh.norm ? W : 1, sy = sh.norm ? H : 1;
+  const out = rings.map(r => r.map(p => [p[0]/sx, p[1]/sy]));
+  sh.pts = out[0];
+  if(sh.rings && sh.rings.length) sh.rings = out;
+  sh.moved = true;
+}
+/* 되돌리기용 스냅샷 */
+function pushUndo(base, idx){
+  const sh = shapesOf(base)[idx]; if(!sh) return;
+  editUndo.push({base, idx, pts: JSON.parse(JSON.stringify(sh.pts)),
+                 rings: sh.rings ? JSON.parse(JSON.stringify(sh.rings)) : null, moved: !!sh.moved});
+  if(editUndo.length > 100) editUndo.shift();
+  updateEditStat();
+}
+function undoEdit(){
+  const u = editUndo.pop();
+  if(!u){ return false; }
+  const sh = shapesOf(u.base)[u.idx];
+  if(sh){ sh.pts = u.pts; if(u.rings) sh.rings = u.rings; sh.moved = u.moved; }
+  S.edited.add(u.base);
+  updateEditStat(); drawLightbox();
+  return true;
+}
+function markEdited(base){
+  S.edited.add(base); markChanged(base); updateEditStat();
+}
+function updateEditStat(){
+  const el = $('sEdit'); if(!el) return;
+  let n = 0;
+  for(const [, arr] of S.shapes) for(const sh of arr) if(sh.moved) n++;
+  el.hidden = !n;
+  el.textContent = `좌표 수정 ${n}`;
+  el.title = '수정 모드에서 좌표를 바꾼 객체 수 — 「⬇ 내보내기 → 수정 라벨 저장」으로 반영';
+}
+
+/* 화면 픽셀당 이미지 픽셀 (핸들 크기·허용 오차를 화면 기준으로 맞추기 위함) */
+function lbIpp(){
+  const cv = $('lbcv'), r = cv.getBoundingClientRect();
+  const vp = (S.lbDim && S.lbDim.vp) || {w:cv.width, h:cv.height};
+  return r.width ? vp.w / r.width : 1;
+}
+/* 커서 아래의 핸들/도형 찾기 */
+function editPick(x, y){
+  const it = S.items[S.lbIdx]; if(!it) return null;
+  const shapes = shapesOf(it.base), d = S.lbDim || {};
+  const W = d.W || 1, H = d.H || 1;
+  const tol = 9 * lbIpp();
+  const sel = (S.selBase === it.base && S.sel && S.sel.mode === 'shape') ? S.sel.i : -1;
+  if(sel >= 0 && shapes[sel] && visibleShape(shapes[sel])){
+    let best = null, bd = tol * tol;
+    for(const h of handlesOf(shapes[sel], W, H)){
+      const dd = (h.x - x)**2 + (h.y - y)**2;
+      if(dd <= bd){ bd = dd; best = h; }
+    }
+    if(best) return {shape: sel, handle: best};
+  }
+  const i = hitTest(shapes, x, y, W, H);
+  return i >= 0 ? {shape: i, handle: null} : null;
+}
+
+/* ---- 좌표 조작 ---- */
+function applyHandleDrag(sh, h, x, y, W, H){
+  const rings = shReadPx(sh, W, H);
+  if(sh.kind === 'box'){
+    const r = shapeRect(sh, W, H);
+    let x1 = r.x, y1 = r.y, x2 = r.x + r.w, y2 = r.y + r.h;
+    switch(h.i){
+      case 0: x1 = x; y1 = y; break;
+      case 1: x2 = x; y1 = y; break;
+      case 2: x2 = x; y2 = y; break;
+      case 3: x1 = x; y2 = y; break;
+      case 4: y1 = y; break;
+      case 5: x2 = x; break;
+      case 6: y2 = y; break;
+      case 7: x1 = x; break;
+    }
+    const nx1 = Math.min(x1, x2), nx2 = Math.max(x1, x2);
+    const ny1 = Math.min(y1, y2), ny2 = Math.max(y1, y2);
+    shWritePx(sh, [[[nx1, ny1], [nx2, ny2]]], W, H);
+    return;
+  }
+  if(sh.kind === 'circle'){                 // 0=중심(전체 이동) · 1=반지름
+    if(h.i === 0){
+      const dx = x - rings[0][0][0], dy = y - rings[0][0][1];
+      rings[0] = rings[0].map(p => [p[0] + dx, p[1] + dy]);
+    } else rings[0][1] = [x, y];
+    shWritePx(sh, rings, W, H);
+    return;
+  }
+  rings[h.ring][h.i] = [x, y];
+  shWritePx(sh, rings, W, H);
+}
+function moveShapeBy(sh, dx, dy, W, H){
+  const rings = shReadPx(sh, W, H).map(r => r.map(p => [p[0] + dx, p[1] + dy]));
+  shWritePx(sh, rings, W, H);
+}
+/* 가장 가까운 변 위에 꼭짓점 추가 */
+function insertVertexAt(sh, x, y, W, H){
+  if(sh.kind === 'box' || sh.kind === 'point' || sh.kind === 'circle') return false;
+  const rings = shReadPx(sh, W, H);
+  let best = null, bd = Infinity;
+  rings.forEach((r, ring) => {
+    const n = r.length;
+    const segs = sh.kind === 'polygon' ? n : n - 1;
+    for(let i = 0; i < segs; i++){
+      const a = r[i], b = r[(i + 1) % n];
+      const d = distToSeg(x, y, a, b);
+      if(d < bd){ bd = d; best = {ring, at:i + 1}; }
+    }
+  });
+  if(!best || bd > 12 * lbIpp()) return false;
+  rings[best.ring].splice(best.at, 0, [x, y]);
+  shWritePx(sh, rings, W, H);
+  return true;
+}
+function deleteVertex(sh, h, W, H){
+  if(sh.kind === 'box' || sh.kind === 'point' || sh.kind === 'circle') return false;
+  const rings = shReadPx(sh, W, H);
+  const min = sh.kind === 'polygon' ? 3 : 2;
+  if(rings[h.ring].length <= min) return false;
+  rings[h.ring].splice(h.i, 1);
+  shWritePx(sh, rings, W, H);
+  return true;
+}
+/* 끌기 중에는 화면 갱신을 프레임당 한 번으로 묶는다 */
+let editRaf = 0;
+function editRedraw(){
+  if(editRaf) return;
+  editRaf = requestAnimationFrame(() => { editRaf = 0; drawLightbox(); });
+}
+function setEditMode(on){
+  editMode = on;
+  editHover = null; editDrag = null;
+  document.body.classList.toggle('editing', on);
+  const b = $('editBtn'); if(b){ b.classList.toggle('on', on); b.setAttribute('aria-pressed', on ? 'true' : 'false'); }
+  const h = $('editHint'); if(h) h.hidden = !on;
+  $('lbcv').style.cursor = on ? 'default' : ((loupeEnabled || cursorBox) ? 'none' : 'crosshair');
+  if(lbOn()) drawLightbox();
+}
+
 /* ---- 커서 가이드 박스 ---- */
 function updateGuide(){
   const gb = $('guidebox'); if(!gb) return;
@@ -979,10 +1156,44 @@ function setZoom(z){
 }
 $('loupeOn').addEventListener('change', e => { setLoupe(e.target.checked); saveSettings(); });
 $('loupeZoom').addEventListener('input', e => { setZoom(+e.target.value); saveSettings(); });
+let suppressClick = false;
+const DRAG_EPS = 2;                       // 이만큼 움직여야 '끌기'로 본다 (클릭 선택과 구분)
 $('lbcv').addEventListener('mousemove', e => {
   lastMouse = {x:e.clientX, y:e.clientY};
+  if(editDrag){
+    const p = lbPoint(e);
+    if(!editDrag.moved){
+      if(Math.abs(e.clientX - editDrag.start.cx) < DRAG_EPS && Math.abs(e.clientY - editDrag.start.cy) < DRAG_EPS) return;
+      editDrag.moved = true;
+      pushUndo(editDrag.base, editDrag.shape);
+    }
+    const sh = shapesOf(editDrag.base)[editDrag.shape];
+    if(sh){
+      if(editDrag.mode === 'handle') applyHandleDrag(sh, editDrag.handle, p.x, p.y, p.W, p.H);
+      else { moveShapeBy(sh, p.x - editDrag.last.x, p.y - editDrag.last.y, p.W, p.H); editDrag.last = {x:p.x, y:p.y}; }
+      editRedraw();
+    }
+    if(loupeEnabled) drawLoupe();
+    return;
+  }
+  if(editMode){                           // 커서 아래 핸들/도형 강조
+    const p = lbPoint(e);
+    const pick = p.inside ? editPick(p.x, p.y) : null;
+    const key = pick ? `${pick.shape}:${pick.handle ? pick.handle.ring + '-' + pick.handle.i : 'x'}` : '';
+    if(key !== (editHover ? editHover.key : '')){
+      editHover = pick ? {shape:pick.shape, handle:pick.handle, key} : null;
+      $('lbcv').style.cursor = pick ? (pick.handle ? 'grab' : 'move') : 'default';
+      editRedraw();
+    }
+  }
   if(loupeEnabled) drawLoupe();
   if(cursorBox) updateGuide();
+});
+window.addEventListener('mouseup', () => {
+  if(!editDrag) return;
+  if(editDrag.moved){ markEdited(editDrag.base); suppressClick = true; }
+  editDrag = null;
+  if(lbOn()) drawLightbox();
 });
 $('lbcv').addEventListener('mouseleave', () => { lastMouse = null; hideLoupe(); updateGuide(); });
 /* 캔버스 위 좌표 → 원본 이미지 픽셀 좌표 (잘라 보기 상태를 반영) */
@@ -993,7 +1204,29 @@ function lbPoint(e){
   const inX = (e.clientX - r.left) / r.width, inY = (e.clientY - r.top) / r.height;
   return {x: vp.x + inX*vp.w, y: vp.y + inY*vp.h, W:d.W, H:d.H, inside: inX >= 0 && inY >= 0 && inX <= 1 && inY <= 1};
 }
+$('lbcv').addEventListener('mousedown', e => {
+  if(!editMode || e.button !== 0) return;
+  const it = S.items[S.lbIdx]; if(!it) return;
+  const p = lbPoint(e); if(!p.inside) return;
+  const pick = editPick(p.x, p.y);
+  if(!pick) return;
+  if(e.shiftKey && pick.handle){          // Shift+클릭 = 꼭짓점 삭제
+    const sh = shapesOf(it.base)[pick.shape];
+    pushUndo(it.base, pick.shape);
+    if(deleteVertex(sh, pick.handle, p.W, p.H)){ markEdited(it.base); drawLightbox(); }
+    else editUndo.pop();
+    suppressClick = true; e.preventDefault(); return;
+  }
+  if(pick.handle) editDrag = {mode:'handle', shape:pick.shape, handle:pick.handle, moved:false, base:it.base};
+  else {
+    if(!(S.sel && S.sel.mode === 'shape' && S.sel.i === pick.shape && S.selBase === it.base)) selectShape(it.base, pick.shape);
+    editDrag = {mode:'shape', shape:pick.shape, last:{x:p.x, y:p.y}, moved:false, base:it.base};
+  }
+  editDrag.start = {cx:e.clientX, cy:e.clientY};
+  e.preventDefault();
+});
 $('lbcv').addEventListener('click', e => {
+  if(suppressClick){ suppressClick = false; return; }
   const it = S.items[S.lbIdx]; if(!it) return;
   const p = lbPoint(e); if(!p.inside) return;
   const i = hitTest(shapesOf(it.base), p.x, p.y, p.W, p.H);
@@ -1002,6 +1235,16 @@ $('lbcv').addEventListener('click', e => {
 $('lbcv').addEventListener('dblclick', e => {
   const it = S.items[S.lbIdx]; if(!it) return;
   const p = lbPoint(e); if(!p.inside) return;
+  if(editMode){                           // 수정 모드: 변 위에 꼭짓점 추가
+    const sel = (S.selBase === it.base && S.sel && S.sel.mode === 'shape') ? S.sel.i : -1;
+    const sh = sel >= 0 ? shapesOf(it.base)[sel] : null;
+    if(sh){
+      pushUndo(it.base, sel);
+      if(insertVertexAt(sh, p.x, p.y, p.W, p.H)){ markEdited(it.base); drawLightbox(); }
+      else editUndo.pop();
+    }
+    return;
+  }
   selectPointAt(it.base, p.x / p.W, p.y / p.H);
 });
 $('lb').querySelector('.close').onclick = closeLightbox;
@@ -1014,8 +1257,13 @@ function redrawAll(){ renderPage(); if(lbOn()) drawLightbox(); }
 document.addEventListener('keydown', e => {
   const t = e.target;
   if(e.key === 'Escape' && document.querySelector('.menu.open')){ closeMenus(); e.preventDefault(); return; }
+  if((e.metaKey || e.ctrlKey) && e.code === 'KeyZ'){        // 좌표 수정 되돌리기
+    if(editUndo.length){ undoEdit(); e.preventDefault(); }
+    return;
+  }
   if(t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT')) return;
   if(e.key === '/' && !lbOn()){ $('q').focus(); $('q').select(); e.preventDefault(); return; }
+  if(e.code === 'KeyE'){ setEditMode(!editMode); e.preventDefault(); return; }
   if(e.code === 'KeyH'){
     const on = !$('showShapes').checked;
     $('showShapes').checked = on; VIEW.show = on;
@@ -1161,7 +1409,7 @@ function download(blob, filename){
 /* ========================= 수정 라벨 내보내기 ========================= */
 function exportLabels(){
   if(!S.changed.size && !S.cocoChanged && !S.labelitChanged){
-    alert('변경된 라벨이 없습니다.\n(클래스 수정 또는 객체 삭제 후 저장하세요.)'); return;
+    alert('변경된 라벨이 없습니다.\n(클래스 수정 · 좌표 수정 · 객체 삭제 후 저장하세요.)'); return;
   }
   const entries = [];
   for(const base of S.changed){
@@ -1175,18 +1423,21 @@ function exportLabels(){
     entries.push({name, data:_enc(text)});
   }
   if(S.labelitChanged && S.labelit){
-    const kept = new Set(), clsOf = new Map(), fieldOf = new Map();
+    const kept = new Set(), clsOf = new Map(), fieldOf = new Map(), shOf = new Map();
     for(const [, arr] of S.shapes) for(const sh of arr)
-      if(sh.src && sh.src.fmt === 'labelit'){ kept.add(sh.src.ref); clsOf.set(sh.src.ref, sh.cls); fieldOf.set(sh.src.ref, sh.src.field); }
-    const text = serializeLabelit(S.labelit.records, kept, clsOf, fieldOf);
+      if(sh.src && sh.src.fmt === 'labelit'){
+        kept.add(sh.src.ref); clsOf.set(sh.src.ref, sh.cls);
+        fieldOf.set(sh.src.ref, sh.src.field); shOf.set(sh.src.ref, sh);
+      }
+    const text = serializeLabelit(S.labelit.records, kept, clsOf, fieldOf, shOf);
     const nm = S.labelit.file ? S.labelit.file.name.replace(/\.(json|jsonl|ndjson)$/i, '') : 'labelit';
     entries.push({name: nm + '_edited.json', data:_enc(text)});
   }
   if(S.cocoChanged && S.coco){
-    const kept = new Set(), clsOf = new Map();
+    const kept = new Set(), clsOf = new Map(), shOf = new Map();
     for(const [, arr] of S.shapes) for(const sh of arr)
-      if(sh.src && sh.src.fmt === 'coco'){ kept.add(sh.src.ann); clsOf.set(sh.src.ann, sh.cls); }
-    const text = serializeCoco(S.coco.json, kept, clsOf);
+      if(sh.src && sh.src.fmt === 'coco'){ kept.add(sh.src.ann); clsOf.set(sh.src.ann, sh.cls); shOf.set(sh.src.ann, sh); }
+    const text = serializeCoco(S.coco.json, kept, clsOf, shOf);
     entries.push({name: (S.coco.file ? S.coco.file.name.replace(/\.json$/i, '') : 'coco') + '_edited.json', data:_enc(text)});
   }
   if(!entries.length){ alert('내보낼 라벨이 없습니다.'); return; }
@@ -1195,7 +1446,7 @@ function exportLabels(){
   } else {
     download(zipStore(entries), `labels_edited_${todayYMD()}.zip`);
   }
-  alert(`수정된 라벨 ${entries.length}개를 내보냈습니다.\n원본 라벨을 이 파일로 교체하세요. (클래스 수정·객체 삭제 반영)`);
+  alert(`수정된 라벨 ${entries.length}개를 내보냈습니다.\n원본 라벨을 이 파일로 교체하세요.\n(클래스 수정 · 객체 삭제 · 좌표 수정 모두 반영)`);
 }
 
 /* ========================= 오류 CSV ========================= */
@@ -1611,6 +1862,7 @@ function applySettings(o){
   $('grid').style.setProperty('--card', $('cardSize').value + 'px');
   syncDispLabels();
 }
+$('editBtn').addEventListener('click', () => setEditMode(!editMode));
 $('cursorBox').addEventListener('change', e => { setCursorBox(e.target.checked); saveSettings(); });
 function readCursorSize(){
   const clamp = (v, d) => { v = Math.round(+v); return (Number.isFinite(v) && v >= 1 && v <= 500) ? v : d; };
@@ -1707,5 +1959,6 @@ try{ applySettings(JSON.parse(localStorage.getItem(SET_KEY) || 'null')); }catch(
 syncDispLabels();
 updateErrStat();
 updateSeenStat();
+updateEditStat();
 buildLegends();
 updateFilterChip();

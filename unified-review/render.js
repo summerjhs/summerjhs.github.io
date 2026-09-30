@@ -357,3 +357,53 @@ function hitTest(shapes, x, y, W, H){
   });
   return bi;
 }
+
+/* =======================================================================
+   수정 모드: 꼭짓점 핸들 계산 · 그리기
+   handlesOf → [{x, y, kind:'vertex'|'edge', ring, i}]  (이미지 픽셀 좌표)
+   ======================================================================= */
+function handlesOf(sh, W, H){
+  const out = [];
+  if(sh.kind === 'box'){
+    const r = shapeRect(sh, W, H);
+    const x1 = r.x, y1 = r.y, x2 = r.x + r.w, y2 = r.y + r.h;
+    const cx = (x1 + x2)/2, cy = (y1 + y2)/2;
+    [[x1,y1],[x2,y1],[x2,y2],[x1,y2]].forEach((p, i) => out.push({x:p[0], y:p[1], kind:'vertex', ring:0, i}));
+    [[cx,y1],[x2,cy],[cx,y2],[x1,cy]].forEach((p, i) => out.push({x:p[0], y:p[1], kind:'edge', ring:0, i:i+4}));
+    return out;
+  }
+  if(sh.kind === 'point' || sh.kind === 'circle'){
+    ptsPx(sh, W, H).forEach((p, i) => out.push({x:p[0], y:p[1], kind:'vertex', ring:0, i}));
+    return out;
+  }
+  ringsPx(sh, W, H).forEach((r, ring) => r.forEach((p, i) => out.push({x:p[0], y:p[1], kind:'vertex', ring, i})));
+  return out;
+}
+/* 확대 화면 위에 핸들을 그린다 (ipp = 이미지픽셀/화면픽셀 → 화면상 크기를 일정하게) */
+function drawEditHandles(ctx, shapes, W, H, vp, ipp, sel, hover){
+  ctx.save();
+  ctx.translate(-vp.x, -vp.y);
+  const R = Math.max(1, 5 * ipp), LW = Math.max(1, 1.5 * ipp);
+  /* 선택되지 않은 도형: 커서가 올라간 것만 옅게 강조 */
+  if(hover && hover.shape != null && (!sel || sel.i !== hover.shape)){
+    const sh = shapes[hover.shape];
+    if(sh && visibleShape(sh)){
+      ctx.strokeStyle = 'rgba(255,255,255,.95)'; ctx.lineWidth = Math.max(1, (VIEW.lineW + 2) * 1);
+      pathShape(ctx, sh, W, H); ctx.stroke();
+    }
+  }
+  const sh = sel && shapes[sel.i];
+  if(sh && visibleShape(sh)){
+    for(const h of handlesOf(sh, W, H)){
+      const on = hover && hover.handle && hover.handle.ring === h.ring && hover.handle.i === h.i;
+      const rr = on ? R * 1.45 : R;
+      ctx.beginPath();
+      if(h.kind === 'edge') ctx.rect(h.x - rr*0.8, h.y - rr*0.8, rr*1.6, rr*1.6);
+      else ctx.arc(h.x, h.y, rr, 0, Math.PI*2);
+      ctx.fillStyle = on ? '#ffd400' : '#ffffff';
+      ctx.fill();
+      ctx.lineWidth = LW; ctx.strokeStyle = '#1f3a93'; ctx.stroke();
+    }
+  }
+  ctx.restore();
+}
