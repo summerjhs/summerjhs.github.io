@@ -63,7 +63,7 @@ body { background: var(--bg); color: var(--ink); font-family: 'Segoe UI', sans-s
 /* 오른쪽: 캔버스 + 편집 */
 .content { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
 .canvas-wrap { flex: 1; position: relative; overflow: hidden; background: var(--canvas-bg); }
-.canvas-wrap canvas { display: block; }
+.canvas-wrap canvas { display: block; cursor: default; }
 
 /* 편집 패널 */
 .edit-panel { display: flex; align-items: center; gap: 10px; padding: 8px 12px; background: var(--white); border-top: 1px solid var(--border); flex-shrink: 0; min-height: 44px; flex-wrap: wrap; }
@@ -73,12 +73,17 @@ body { background: var(--bg); color: var(--ink); font-family: 'Segoe UI', sans-s
 .edit-panel input[type="text"].reason-in { width: 160px; background: var(--white); color: var(--ink); border: 1px solid var(--border); border-radius: 4px; padding: 4px 8px; font-size: 12px; outline: none; }
 .edit-panel input[type="text"].reason-in:focus { border-color: var(--deep-terra); }
 
+/* 임시 저장 표시 */
+.autosave { font-size: 11px; color: var(--deep-sage); white-space: nowrap; }
+.autosave.warn { color: var(--deep-terra); font-weight: bold; }
+
 /* 좌표 편집 패널 */
 .coord-panel { display: flex; align-items: center; gap: 6px; padding: 4px 12px; background: var(--hover); border-top: 1px solid var(--border); flex-shrink: 0; min-height: 10px; }
 .coord-panel label { font-size: 11px; color: var(--muted); }
 .coord-panel input[type="number"] { width: 60px; background: var(--white); color: var(--ink); border: 1px solid var(--border); border-radius: 3px; padding: 3px 5px; font-size: 11px; outline: none; }
 .coord-panel input[type="number"]:focus { border-color: var(--deep-sage); }
 .coord-panel input:disabled { background: var(--hover); color: var(--muted); }
+.coord-panel .hint { font-size: 11px; color: var(--muted); margin-left: auto; }
 
 /* VIN 스트립 */
 .vin-strip { display: flex; gap: 3px; padding: 4px 12px; background: var(--hover); border-top: 1px solid var(--border); flex-shrink: 0; min-height: 10px; flex-wrap: wrap; }
@@ -147,6 +152,7 @@ body { background: var(--bg); color: var(--ink); font-family: 'Segoe UI', sans-s
             <label>xmax:</label><input type="number" id="coordXmax" disabled>
             <label>ymax:</label><input type="number" id="coordYmax" disabled>
             <button class="btn" id="btnCoordApply" disabled onclick="applyCoords()" style="font-size:11px;padding:3px 10px;">좌표 적용</button>
+            <span class="hint">박스를 클릭한 뒤 &middot; 모서리/변 핸들을 끌어 크기 조절 &middot; 안쪽을 끌어 이동 &middot; Shift+방향키 미세 조정</span>
         </div>
         <div class="vin-strip" id="vinStrip"></div>
     </div>
@@ -155,6 +161,8 @@ body { background: var(--bg); color: var(--ink); font-family: 'Segoe UI', sans-s
 <!-- 하단 -->
 <div class="bottom-bar">
     <span class="status" id="bottomStatus">준비</span>
+    <span class="autosave" id="autosaveStatus"></span>
+    <button class="btn" onclick="clearDraft(true)" title="브라우저에 보관된 임시 저장 내역을 지웁니다" style="font-size:11px;">&#128465; 임시저장 지우기</button>
     <button class="btn btn-save" onclick="saveJson()">&#128190; 교정 JSON 저장 (Ctrl+S)</button>
     <button class="btn" onclick="undo()">&#8617; 되돌리기 (Ctrl+Z)</button>
     <button class="btn btn-csv" onclick="exportCsv()">&#128229; 문제 dataID CSV 추출</button>
@@ -176,6 +184,14 @@ let edgeOnly = false;    // 외곽선 접촉 프레임만 보기
 let hideBoxes = false;   // 전체 박스 숨김 (H 토글)
 let edgeScanToken = 0;   // 외곽선 스캔 취소용 토큰
 const EDGE_TOL = 1;      // 외곽선 접촉 판정 허용오차(px)
+
+// 박스 직접 편집 (끌어서 이동/크기조절)
+let boxDrag = null;      // {mode:'move'|'handle', handle, startBox, last:{x,y}, startC:{x,y}, moved}
+let hoverHandle = null;  // 커서 아래 핸들 키
+let frozenRoi = null;    // 끌는 동안 표시 영역(ROI) 고정 — 화면이 따라 움직이지 않도록
+let suppressClick = false;
+const HANDLE_PX = 7;     // 핸들 히트 반경(화면 px)
+const DRAG_EPS = 2;      // 이만큼 움직여야 '끌기'로 판정 (클릭 선택과 구분)
 
 let loadedImages = {};    // { filename: File }
 let loadedRecords = [];   // [ record ]
@@ -327,6 +343,8 @@ function rebuildEntries() {
     const noImg = entries.filter(e => e.hasRecord && !e.hasImage).length;
     document.getElementById('topStatus').textContent =
         `레코드 ${loadedRecords.length}개 · 매칭 이미지 ${withImg}개` + (noImg ? ` · 이미지없음 ${noImg}개` : '');
+
+    maybeRestoreDraft();   // 임시 저장된 수정 내역이 있으면 복원
 
     if (entries.length > 0) selectEntry(0);
 
@@ -480,6 +498,7 @@ function toggleEdgeOnly() {
 // ── 이미지 표시 ───────────────────────────────────────────
 function selectEntry(idx) {
     if (idx < 0 || idx >= entries.length) return;
+    if (currentIndex >= 0 && currentIndex !== idx) saveDraftNow();   // 이미지를 넘길 때마다 임시 저장
 
     document.querySelectorAll('#fileList .file-item').forEach(el => el.classList.remove('active'));
     const items = document.querySelectorAll('#fileList .file-item');
@@ -561,7 +580,9 @@ function drawCanvas() {
     // 표시 영역(ROI) 결정: 박스영역 확대 모드면 박스 union, 아니면 전체 이미지
     const entry0 = currentIndex >= 0 ? entries[currentIndex] : null;
     let rx0 = 0, ry0 = 0, rw = iw, rh = ih;
-    if (fitToBoxes && entry0 && entry0.boxes.length) {
+    if (frozenRoi) {
+        rx0 = frozenRoi.rx0; ry0 = frozenRoi.ry0; rw = frozenRoi.rw; rh = frozenRoi.rh;
+    } else if (fitToBoxes && entry0 && entry0.boxes.length) {
         let minx = Infinity, miny = Infinity, maxx = -Infinity, maxy = -Infinity;
         entry0.boxes.forEach(b => {
             minx = Math.min(minx, b.xmin); miny = Math.min(miny, b.ymin);
@@ -588,6 +609,8 @@ function drawCanvas() {
     canvas._oy = oy;
     canvas._rx0 = rx0;
     canvas._ry0 = ry0;
+    canvas._rw = rw;
+    canvas._rh = rh;
 
     ctx.drawImage(currentImage, rx0, ry0, rw, rh, ox, oy, sw, sh);
 
@@ -649,6 +672,23 @@ function drawCanvas() {
         ctx.fillText(String(i + 1), x2 - 12, y2 - 3);
     });
 
+    // 선택 박스 핸들 (끌어서 이동/크기 조절)
+    if (!hideBoxes && selectedBox !== null && entry.boxes[selectedBox] && entry.hasRecord) {
+        const b = entry.boxes[selectedBox];
+        handlesOf(b).forEach(h => {
+            const hx = ox + (h.x - rx0) * scale;
+            const hy = oy + (h.y - ry0) * scale;
+            const r = (hoverHandle === h.k || (boxDrag && boxDrag.handle === h.k)) ? 6 : 4.5;
+            ctx.fillStyle = (hoverHandle === h.k || (boxDrag && boxDrag.handle === h.k)) ? '#ffd400' : '#ffffff';
+            ctx.strokeStyle = '#121c2e';
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.rect(hx - r, hy - r, r * 2, r * 2);
+            ctx.fill();
+            ctx.stroke();
+        });
+    }
+
     // 프레임 문제 배너
     if (entry.frameFlag) {
         ctx.strokeStyle = '#ff2d2d';
@@ -704,27 +744,228 @@ function drawCanvas() {
 window.addEventListener('resize', () => { if (currentImage) drawCanvas(); });
 new ResizeObserver(() => { if (currentImage) drawCanvas(); }).observe(document.getElementById('canvasWrap'));
 
-// ── 캔버스 클릭 (박스 선택) ───────────────────────────────
-document.getElementById('canvas').addEventListener('click', (e) => {
-    if (currentIndex < 0) return;
-    const entry = entries[currentIndex];
-    if (!entry.hasRecord || !entry.boxes.length) return;
-
+// ── 캔버스 좌표 변환 ──────────────────────────────────────
+// 화면(클라이언트) 좌표 → 원본 이미지 픽셀 좌표
+function canvasPoint(e) {
     const canvas = document.getElementById('canvas');
+    if (!canvas._scale) return null;
     const rect = canvas.getBoundingClientRect();
     const cx = e.clientX - rect.left;
     const cy = e.clientY - rect.top;
-    const mx = (canvas._rx0 || 0) + (cx - canvas._ox) / canvas._scale;
-    const my = (canvas._ry0 || 0) + (cy - canvas._oy) / canvas._scale;
+    return {
+        x: (canvas._rx0 || 0) + (cx - canvas._ox) / canvas._scale,
+        y: (canvas._ry0 || 0) + (cy - canvas._oy) / canvas._scale,
+        scale: canvas._scale,
+    };
+}
 
+// ── 박스 핸들 (모서리 4 + 변 중앙 4) ─────────────────────
+function handlesOf(box) {
+    const mx = (box.xmin + box.xmax) / 2, my = (box.ymin + box.ymax) / 2;
+    return [
+        { k: 'nw', x: box.xmin, y: box.ymin, cur: 'nwse-resize' },
+        { k: 'n',  x: mx,       y: box.ymin, cur: 'ns-resize'   },
+        { k: 'ne', x: box.xmax, y: box.ymin, cur: 'nesw-resize' },
+        { k: 'e',  x: box.xmax, y: my,       cur: 'ew-resize'   },
+        { k: 'se', x: box.xmax, y: box.ymax, cur: 'nwse-resize' },
+        { k: 's',  x: mx,       y: box.ymax, cur: 'ns-resize'   },
+        { k: 'sw', x: box.xmin, y: box.ymax, cur: 'nesw-resize' },
+        { k: 'w',  x: box.xmin, y: my,       cur: 'ew-resize'   },
+    ];
+}
+
+// 선택 박스의 핸들 히트 테스트 (허용오차는 화면 px 기준이라 확대율로 환산)
+function hitHandle(box, mx, my, scale) {
+    // 축소 상태에서 핸들 판정 범위가 박스를 통째로 삼키지 않도록 상한을 둔다
+    const w = box.xmax - box.xmin, h = box.ymax - box.ymin;
+    const tol = Math.min(HANDLE_PX / scale, Math.max(1, Math.min(w, h) / 4));
+    let best = null, bestD = Infinity;
+    handlesOf(box).forEach(h => {
+        const d = Math.max(Math.abs(mx - h.x), Math.abs(my - h.y));
+        if (d <= tol && d < bestD) { bestD = d; best = h; }
+    });
+    return best;
+}
+
+function hitBoxIndex(entry, mx, my) {
     for (let i = entry.boxes.length - 1; i >= 0; i--) {
         const b = entry.boxes[i];
-        if (mx >= b.xmin && mx <= b.xmax && my >= b.ymin && my <= b.ymax) {
-            selectBox(i);
+        if (mx >= b.xmin && mx <= b.xmax && my >= b.ymin && my <= b.ymax) return i;
+    }
+    return -1;
+}
+
+// ── 좌표 변경 확정 (끌기 종료 / 미세 조정 공통) ──────────
+const MIN_BOX = 1;   // 최소 폭/높이(px)
+
+function commitBoxCoords(entryIdx, boxIdx, oldCoords) {
+    const entry = entries[entryIdx];
+    const box = entry.boxes[boxIdx];
+    if (box.xmin === oldCoords.xmin && box.ymin === oldCoords.ymin &&
+        box.xmax === oldCoords.xmax && box.ymax === oldCoords.ymax) return;
+
+    box.modified = true;
+    entry.dirty = true;
+    writeCoordsToSrc(box);
+    computeEdges(entry);   // 좌표 변경 → 외곽선 접촉 재판정
+
+    undoStack.push({
+        type: 'coords', entryIdx, boxIdx,
+        oldLabel: box.label, newLabel: box.label,
+        oldCoords,
+        newCoords: { xmin: box.xmin, ymin: box.ymin, xmax: box.xmax, ymax: box.ymax },
+    });
+    updateListItem(entryIdx);
+    updateStatusFromEntries();
+    syncCoordInputs(box);
+    updateBoxInfo();
+    drawCanvas();
+    scheduleDraftSave();
+}
+
+function syncCoordInputs(box) {
+    if (!box) return;
+    document.getElementById('coordXmin').value = box.xmin;
+    document.getElementById('coordYmin').value = box.ymin;
+    document.getElementById('coordXmax').value = box.xmax;
+    document.getElementById('coordYmax').value = box.ymax;
+}
+
+function updateBoxInfo() {
+    if (currentIndex < 0 || selectedBox === null) return;
+    const entry = entries[currentIndex];
+    const box = entry.boxes[selectedBox];
+    if (!box) return;
+    document.getElementById('boxInfo').textContent =
+        `박스 #${selectedBox+1}/${entry.boxes.length}  |  라벨: [${box.label}]  |  (${box.xmin},${box.ymin})-(${box.xmax},${box.ymax})  |  ${box.xmax-box.xmin}×${box.ymax-box.ymin}` +
+        (box.flagged ? '  |  ⚑ 문제' : '') + (box.edge ? '  |  🔲 외곽접촉' : '');
+}
+
+// ── 박스 이동 / 크기 조절 ────────────────────────────────
+function clampBoxToImage(entry, box) {
+    if (!entry.imgW || !entry.imgH) return;
+    box.xmin = Math.max(0, Math.min(box.xmin, entry.imgW - MIN_BOX));
+    box.ymin = Math.max(0, Math.min(box.ymin, entry.imgH - MIN_BOX));
+    box.xmax = Math.min(entry.imgW, Math.max(box.xmax, box.xmin + MIN_BOX));
+    box.ymax = Math.min(entry.imgH, Math.max(box.ymax, box.ymin + MIN_BOX));
+}
+
+function moveBoxTo(entry, box, start, dx, dy) {
+    const w = start.xmax - start.xmin, h = start.ymax - start.ymin;
+    let nx = Math.round(start.xmin + dx), ny = Math.round(start.ymin + dy);
+    if (entry.imgW && entry.imgH) {
+        nx = Math.max(0, Math.min(nx, entry.imgW - w));
+        ny = Math.max(0, Math.min(ny, entry.imgH - h));
+    }
+    box.xmin = nx; box.ymin = ny; box.xmax = nx + w; box.ymax = ny + h;
+}
+
+function resizeBoxBy(entry, box, start, handle, mx, my) {
+    box.xmin = start.xmin; box.ymin = start.ymin; box.xmax = start.xmax; box.ymax = start.ymax;
+    const px = Math.round(mx), py = Math.round(my);
+    if (handle.includes('w')) box.xmin = Math.min(px, start.xmax - MIN_BOX);
+    if (handle.includes('e')) box.xmax = Math.max(px, start.xmin + MIN_BOX);
+    if (handle.includes('n')) box.ymin = Math.min(py, start.ymax - MIN_BOX);
+    if (handle.includes('s')) box.ymax = Math.max(py, start.ymin + MIN_BOX);
+    clampBoxToImage(entry, box);
+}
+
+const canvasEl = document.getElementById('canvas');
+
+canvasEl.addEventListener('mousedown', (e) => {
+    if (e.button !== 0 || currentIndex < 0 || !currentImage) return;
+    const entry = entries[currentIndex];
+    if (!entry.hasRecord || !entry.boxes.length) return;
+    const p = canvasPoint(e);
+    if (!p) return;
+
+    // 1) 선택된 박스의 핸들 → 크기 조절
+    if (!hideBoxes && selectedBox !== null && entry.boxes[selectedBox]) {
+        const h = hitHandle(entry.boxes[selectedBox], p.x, p.y, p.scale);
+        if (h) {
+            startBoxDrag(entry, selectedBox, 'handle', h.k, p, e);
+            e.preventDefault();
             return;
         }
     }
-    deselectBox();
+
+    // 2) 박스 내부 → 선택 후 이동
+    const idx = hitBoxIndex(entry, p.x, p.y);
+    if (idx < 0) { deselectBox(); return; }
+    if (idx !== selectedBox) selectBox(idx);
+    if (!hideBoxes) { startBoxDrag(entry, idx, 'move', null, p, e); e.preventDefault(); }
+});
+
+function startBoxDrag(entry, boxIdx, mode, handle, p, e) {
+    const box = entry.boxes[boxIdx];
+    boxDrag = {
+        mode, handle, boxIdx, entryIdx: currentIndex,
+        start: { xmin: box.xmin, ymin: box.ymin, xmax: box.xmax, ymax: box.ymax },
+        origin: { x: p.x, y: p.y },
+        startClient: { x: e.clientX, y: e.clientY },
+        moved: false,
+    };
+    const canvas = document.getElementById('canvas');
+    frozenRoi = { rx0: canvas._rx0, ry0: canvas._ry0, rw: canvas._rw, rh: canvas._rh };
+}
+
+canvasEl.addEventListener('mousemove', (e) => {
+    if (currentIndex < 0 || !currentImage) return;
+    const entry = entries[currentIndex];
+    const p = canvasPoint(e);
+    if (!p) return;
+
+    if (boxDrag) {
+        if (!boxDrag.moved) {
+            const far = Math.abs(e.clientX - boxDrag.startClient.x) >= DRAG_EPS ||
+                        Math.abs(e.clientY - boxDrag.startClient.y) >= DRAG_EPS;
+            if (!far) return;
+            boxDrag.moved = true;
+        }
+        const box = entries[boxDrag.entryIdx].boxes[boxDrag.boxIdx];
+        if (boxDrag.mode === 'handle') resizeBoxBy(entry, box, boxDrag.start, boxDrag.handle, p.x, p.y);
+        else moveBoxTo(entry, box, boxDrag.start, p.x - boxDrag.origin.x, p.y - boxDrag.origin.y);
+        syncCoordInputs(box);
+        document.getElementById('boxInfo').textContent =
+            `박스 #${boxDrag.boxIdx+1}/${entry.boxes.length}  |  ${boxDrag.mode === 'handle' ? '크기 조절' : '이동'} 중 … (${box.xmin},${box.ymin})-(${box.xmax},${box.ymax})  |  ${box.xmax-box.xmin}×${box.ymax-box.ymin}`;
+        drawCanvas();
+        return;
+    }
+
+    // 커서 모양 안내 (핸들 / 이동 / 기본)
+    let cur = 'default', hk = null;
+    if (!hideBoxes && entry.hasRecord && selectedBox !== null && entry.boxes[selectedBox]) {
+        const h = hitHandle(entry.boxes[selectedBox], p.x, p.y, p.scale);
+        if (h) { cur = h.cur; hk = h.k; }
+    }
+    if (!hk && entry.hasRecord && entry.boxes.length) {
+        const idx = hitBoxIndex(entry, p.x, p.y);
+        if (idx >= 0) cur = hideBoxes ? 'pointer' : 'move';
+    }
+    canvasEl.style.cursor = cur;
+    if (hk !== hoverHandle) { hoverHandle = hk; drawCanvas(); }
+});
+
+canvasEl.addEventListener('mouseleave', () => {
+    if (hoverHandle !== null) { hoverHandle = null; drawCanvas(); }
+});
+
+window.addEventListener('mouseup', () => {
+    if (!boxDrag) return;
+    const d = boxDrag;
+    boxDrag = null;
+    frozenRoi = null;
+    if (d.moved) {
+        suppressClick = true;
+        commitBoxCoords(d.entryIdx, d.boxIdx, d.start);
+    } else {
+        drawCanvas();
+    }
+});
+
+// 끌기 직후의 click 이벤트는 무시 (선택이 튀는 것 방지)
+canvasEl.addEventListener('click', () => {
+    if (suppressClick) suppressClick = false;
 });
 
 function selectBox(idx) {
@@ -733,19 +974,14 @@ function selectBox(idx) {
     if (idx >= entry.boxes.length) return;
     selectedBox = idx;
     const box = entry.boxes[idx];
-    document.getElementById('boxInfo').textContent =
-        `박스 #${idx+1}/${entry.boxes.length}  |  라벨: [${box.label}]  |  (${box.xmin},${box.ymin})-(${box.xmax},${box.ymax})` +
-        (box.flagged ? '  |  ⚑ 문제' : '') + (box.edge ? '  |  🔲 외곽접촉' : '');
+    updateBoxInfo();
     document.getElementById('labelInput').disabled = false;
     document.getElementById('btnApply').disabled = false;
     document.getElementById('btnFlagBox').disabled = false;
     document.getElementById('labelInput').value = box.label;
     document.getElementById('labelInput').select();
     document.getElementById('labelInput').focus();
-    document.getElementById('coordXmin').value = box.xmin;
-    document.getElementById('coordYmin').value = box.ymin;
-    document.getElementById('coordXmax').value = box.xmax;
-    document.getElementById('coordYmax').value = box.ymax;
+    syncCoordInputs(box);
     setCoordInputsEnabled(true);
     updateFlagButtons();
     updateVinStrip();
@@ -793,6 +1029,7 @@ function applyLabel() {
     updateStatusFromEntries();
     updateVinStrip();
     drawCanvas();
+    scheduleDraftSave();
 
     document.getElementById('boxInfo').textContent =
         `박스 #${selectedBox+1}/${entry.boxes.length}  |  라벨: [${newLabel}]  |  (${box.xmin},${box.ymin})-(${box.xmax},${box.ymax})`;
@@ -850,6 +1087,7 @@ function toggleBoxFlag() {
     const box = entry.boxes[selectedBox];
     box.flagged = !box.flagged;
     box.flagReason = box.flagged ? document.getElementById('flagReasonInput').value.trim() : '';
+    scheduleDraftSave();
     updateFlagButtons();
     updateListItem(currentIndex);
     updateStatusFromEntries();
@@ -865,6 +1103,7 @@ function toggleFrameFlag() {
     if (!entry.hasRecord) return;
     entry.frameFlag = !entry.frameFlag;
     entry.frameReason = entry.frameFlag ? document.getElementById('flagReasonInput').value.trim() : '';
+    scheduleDraftSave();
     updateFlagButtons();
     updateListItem(currentIndex);
     updateStatusFromEntries();
@@ -877,6 +1116,7 @@ function toggleUnable() {
     if (!entry.hasRecord) return;
     entry.unableToWork = !entry.unableToWork;
     entry.unableReason = entry.unableToWork ? document.getElementById('flagReasonInput').value.trim() : '';
+    scheduleDraftSave();
     updateFlagButtons();
     updateListItem(currentIndex);
     updateStatusFromEntries();
@@ -928,18 +1168,24 @@ function applyCoords() {
 
     const oldCoords = { xmin: box.xmin, ymin: box.ymin, xmax: box.xmax, ymax: box.ymax };
     box.xmin = newXmin; box.ymin = newYmin; box.xmax = newXmax; box.ymax = newYmax;
-    box.modified = true;
-    entry.dirty = true;
-    writeCoordsToSrc(box);
-    computeEdges(entry);   // 좌표 변경 → 외곽선 접촉 재판정
+    commitBoxCoords(currentIndex, selectedBox, oldCoords);
+}
 
-    undoStack.push({ type: 'coords', entryIdx: currentIndex, boxIdx: selectedBox, oldLabel: box.label, newLabel: box.label, oldCoords, newCoords: { xmin: newXmin, ymin: newYmin, xmax: newXmax, ymax: newYmax } });
-    updateListItem(currentIndex);
-    updateStatusFromEntries();
-    drawCanvas();
-
-    document.getElementById('boxInfo').textContent =
-        `박스 #${selectedBox+1}/${entry.boxes.length}  |  라벨: [${box.label}]  |  (${box.xmin},${box.ymin})-(${box.xmax},${box.ymax})`;
+// ── 선택 박스 미세 조정 (Shift+방향키 = 1px 이동, Shift+Alt = 크기) ──
+function nudgeBox(dx, dy, resize) {
+    if (currentIndex < 0 || selectedBox === null) return;
+    const entry = entries[currentIndex];
+    const box = entry.boxes[selectedBox];
+    if (!box) return;
+    const oldCoords = { xmin: box.xmin, ymin: box.ymin, xmax: box.xmax, ymax: box.ymax };
+    if (resize) {
+        box.xmax = Math.max(box.xmin + MIN_BOX, box.xmax + dx);
+        box.ymax = Math.max(box.ymin + MIN_BOX, box.ymax + dy);
+        clampBoxToImage(entry, box);
+    } else {
+        moveBoxTo(entry, box, oldCoords, dx, dy);
+    }
+    commitBoxCoords(currentIndex, selectedBox, oldCoords);
 }
 
 // ── 되돌리기 ──────────────────────────────────────────────
@@ -966,6 +1212,7 @@ function undo() {
     entry.dirty = entry.boxes.some(b => b.modified);
     updateListItem(entryIdx);
     updateStatusFromEntries();
+    scheduleDraftSave();
     if (entryIdx === currentIndex) {
         updateVinStrip();
         drawCanvas();
@@ -1001,6 +1248,7 @@ function saveJson() {
     populateList();
     if (currentIndex >= 0) selectEntry(currentIndex);
     updateStatusFromEntries();
+    saveDraftNow();
     alert(`교정 JSON 저장 완료 (${recEntries.length}개 레코드, 수정 ${dirtyCount}건).`);
 }
 
@@ -1079,12 +1327,163 @@ function updateStatusFromEntries() {
         `총 ${total}  |  레코드 ${rec}  |  수정 ${dirty}  |  문제프레임 ${flaggedFrames}  |  문제박스 ${flaggedBoxes}  |  작업불가 ${unable}  |  🔲 외곽접촉 ${edge}`;
 }
 
+// ── 임시 저장 (브라우저 localStorage) ─────────────────────
+// 이미지를 넘길 때마다, 그리고 모든 수정 직후 자동으로 보관한다.
+// 용량을 아끼려고 "변경된 프레임"만 저장한다.
+const DRAFT_KEY = 'vin-label-editor:draft';
+let draftSaveTimer = null;
+let draftAccepted = false;   // 이번 세션에서 복원을 수락했는가
+let draftDeclined = false;   // 복원을 거절했는가 (다시 묻지 않음)
+
+function entryKey(e) { return (e.dataID || '') + '|' + e.filename; }
+
+function setAutosaveStatus(text, warn) {
+    const el = document.getElementById('autosaveStatus');
+    el.textContent = text || '';
+    el.className = 'autosave' + (warn ? ' warn' : '');
+}
+
+function collectDraft() {
+    const out = {};
+    let n = 0;
+    entries.forEach(e => {
+        if (!e.hasRecord) return;
+        const boxes = [];
+        e.boxes.forEach((b, i) => {
+            if (!b.modified && !b.flagged) return;
+            boxes.push({
+                i, id: b.objectID || '', l: b.label,
+                c: [b.xmin, b.ymin, b.xmax, b.ymax],
+                m: b.modified ? 1 : 0, g: b.flagged ? 1 : 0, gr: b.flagReason || '',
+            });
+        });
+        if (!boxes.length && !e.frameFlag && !e.unableToWork) return;
+        out[entryKey(e)] = {
+            f: e.frameFlag ? 1 : 0, fr: e.frameReason || '',
+            u: e.unableToWork ? 1 : 0, ur: e.unableReason || '',
+            b: boxes,
+        };
+        n++;
+    });
+    return { v: 1, jsonFile: jsonFileName, savedAt: new Date().toISOString(), count: n, entries: out };
+}
+
+function saveDraftNow() {
+    if (draftSaveTimer) { clearTimeout(draftSaveTimer); draftSaveTimer = null; }
+    if (!entries.some(e => e.hasRecord)) return;
+    const draft = collectDraft();
+    try {
+        if (!draft.count) { localStorage.removeItem(DRAFT_KEY); setAutosaveStatus(''); return; }
+        localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+        const t = new Date().toLocaleTimeString('ko-KR', { hour12: false });
+        setAutosaveStatus(`\u{1F4BE} 임시저장 ${t} · ${draft.count}건`);
+    } catch (err) {
+        console.warn('임시 저장 실패', err);
+        setAutosaveStatus('\u26A0 임시저장 실패 — 저장 공간 부족', true);
+    }
+}
+
+function scheduleDraftSave() {
+    if (draftSaveTimer) clearTimeout(draftSaveTimer);
+    draftSaveTimer = setTimeout(saveDraftNow, 400);
+}
+
+function loadDraft() {
+    try {
+        const raw = localStorage.getItem(DRAFT_KEY);
+        if (!raw) return null;
+        const d = JSON.parse(raw);
+        return (d && d.entries) ? d : null;
+    } catch { return null; }
+}
+
+function clearDraft(ask) {
+    if (ask && !confirm('브라우저에 보관된 임시 저장 내역을 지웁니다.\n(화면에 띄워둔 현재 수정 내용은 그대로 남습니다)')) return;
+    if (draftSaveTimer) { clearTimeout(draftSaveTimer); draftSaveTimer = null; }
+    try { localStorage.removeItem(DRAFT_KEY); } catch {}
+    setAutosaveStatus('임시저장 내역을 지웠습니다');
+}
+
+// 임시 저장 내역을 현재 entries에 반영 (라벨/좌표는 JSON 원본에도 기록)
+function applyDraft(draft) {
+    let okE = 0, okB = 0, miss = 0;
+    entries.forEach(e => {
+        if (!e.hasRecord) return;
+        const d = draft.entries[entryKey(e)];
+        if (!d) return;
+        e.frameFlag = !!d.f; e.frameReason = d.fr || '';
+        e.unableToWork = !!d.u; e.unableReason = d.ur || '';
+        (d.b || []).forEach(sb => {
+            // objectID 우선 매칭 (좌표 수정으로 정렬 순서가 바뀔 수 있으므로)
+            let box = sb.id ? e.boxes.find(b => b.objectID === sb.id) : null;
+            if (!box) box = e.boxes[sb.i];
+            if (!box) { miss++; return; }
+            if (sb.m) {
+                if (sb.l != null && sb.l !== '') { box.label = sb.l; box.srcData.value.label_symbol = sb.l; }
+                if (sb.c) {
+                    box.xmin = sb.c[0]; box.ymin = sb.c[1]; box.xmax = sb.c[2]; box.ymax = sb.c[3];
+                    writeCoordsToSrc(box);
+                }
+                box.modified = true;
+            }
+            box.flagged = !!sb.g; box.flagReason = sb.gr || '';
+            okB++;
+        });
+        e.dirty = e.boxes.some(b => b.modified);
+        computeEdges(e);
+        okE++;
+    });
+    return { okE, okB, miss };
+}
+
+// 데이터 로드 직후 호출 — 복원 여부를 한 번만 묻는다
+function maybeRestoreDraft() {
+    if (draftDeclined) return;
+    const draft = loadDraft();
+    if (!draft || !draft.count) return;
+    if (!entries.some(e => e.hasRecord)) return;
+    // 지금 로드한 데이터와 겹치는 항목이 없으면 다른 작업의 임시저장 → 조용히 무시
+    const keys = new Set(entries.filter(e => e.hasRecord).map(entryKey));
+    if (!Object.keys(draft.entries).some(k => keys.has(k))) return;
+
+    if (!draftAccepted) {
+        let when = draft.savedAt;
+        try { when = new Date(draft.savedAt).toLocaleString('ko-KR'); } catch {}
+        const msg = `임시 저장된 수정 내역이 있습니다.\n\n` +
+                    `JSON: ${draft.jsonFile || '(알 수 없음)'}\n시각: ${when}\n대상: ${draft.count}개 프레임\n\n복원하시겠습니까?`;
+        if (!confirm(msg)) { draftDeclined = true; setAutosaveStatus('임시저장 복원 안 함'); return; }
+        draftAccepted = true;
+    }
+    const r = applyDraft(draft);
+    populateList();
+    updateStatusFromEntries();
+    setAutosaveStatus(`\u{1F4BE} 임시저장 복원 — ${r.okE}프레임 / ${r.okB}박스` + (r.miss ? ` (매칭 실패 ${r.miss})` : ''), !!r.miss);
+}
+
+// 창을 닫기 전: 남은 변경을 즉시 보관하고 경고
+window.addEventListener('beforeunload', (e) => {
+    if (!entries.some(en => en.dirty || isProblem(en))) return;
+    saveDraftNow();
+    e.preventDefault();
+    e.returnValue = '';
+});
+
 // ── 키보드 단축키 ─────────────────────────────────────────
 document.addEventListener('keydown', (e) => {
     const isInput = e.target.tagName === 'INPUT';
 
     if (e.ctrlKey && e.key === 's') { e.preventDefault(); saveJson(); return; }
     if (e.ctrlKey && e.key === 'z') { e.preventDefault(); undo(); return; }
+
+    // Shift+방향키: 선택 박스 1px 이동 (Shift+Alt+방향키: 폭/높이 1px 조절)
+    if (e.shiftKey && selectedBox !== null &&
+        (e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+        e.preventDefault();
+        const dx = e.key === 'ArrowLeft' ? -1 : e.key === 'ArrowRight' ? 1 : 0;
+        const dy = e.key === 'ArrowUp' ? -1 : e.key === 'ArrowDown' ? 1 : 0;
+        nudgeBox(dx, dy, e.altKey);
+        return;
+    }
 
     if (isInput && e.target.id === 'labelInput') {
         if (e.key === 'Enter') { e.preventDefault(); applyLabel(); return; }
