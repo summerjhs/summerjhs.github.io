@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="ko"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>세포 마스크 편집기</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="style.css?v=7">
+<script src="https://cdn.jsdelivr.net/npm/geotiff@2.1.3/dist-browser/geotiff.js"></script>
+</head><body>
+<!-- ── 상단 바 ── -->
+<div id="topbar">
+  <button id="btn-open" title="채널·마스크 TIF가 들어 있는 폴더 선택">📂 폴더 열기</button>
+  <span id="folder-info" class="muted">폴더를 선택하세요 (<code>set1_membrane.tif</code>, <code>set1_nucleus.tif</code>, <code>set1_membrane_mask_gt.tif</code> …)</span>
+  <div id="modes"><button class="mode-btn on" data-mode="work" title="마스크를 고치는 모드">✎ 작업 모드</button><button class="mode-btn" data-mode="review" title="객체에 코멘트를 남기는 모드 (마스크는 바뀌지 않음)">🔍 검수 모드</button></div>
+  <span class="grow"></span>
+  <span id="save-state" class="muted work-only"></span>
+  <button id="btn-save" class="work-only" title="수정한 마스크 저장 (Cmd/Ctrl+S)" disabled>💾 저장</button>
+  <span id="rv-count" class="muted review-only"></span>
+  <button id="btn-review-load" class="review-only" title="검수기록.json 불러오기">📂 검수 기록 불러오기</button>
+  <button id="btn-review-save" class="review-only" title="코멘트를 수정본/검수기록.json 으로 저장" disabled>💾 검수 기록 저장</button>
+  <button id="btn-pptx" class="review-only" title="코멘트가 있는 객체를 PPTX로" disabled>⬇ PPT 내보내기</button>
+  <input id="review-input" type="file" accept=".json,application/json" hidden>
+  <button id="btn-help" title="단축키 안내 (?)">⌨ 단축키</button>
+</div>
+
+<!-- ── 시작 화면 ── -->
+<div id="empty">
+  <div class="big">📂 데이터 폴더를 선택하세요</div>
+  <div class="muted">Chrome 또는 Edge 권장 — 폴더를 열면 수정본을 폴더 안 <b>수정본/</b>에 바로 저장합니다.<br>
+    Safari·Firefox에서는 열기는 되고, 저장은 파일 다운로드로 대신합니다.<br>
+    데이터는 브라우저 안에서만 처리되고 어디에도 업로드되지 않습니다.</div>
+  <div class="muted">폴더를 이 화면에 끌어다 놓아도 됩니다.</div>
+  <input id="dir-input" type="file" webkitdirectory multiple hidden>
+</div>
+
+<!-- ── 작업 화면 ── -->
+<div id="work" hidden>
+  <aside id="left">
+    <div class="sec-title">레이어 <span class="muted">· 이름 클릭 = 편집 대상 · 채널에 마우스 = 밝기</span></div>
+    <ul id="layers"></ul>
+    <div class="work-only">
+    <div class="sec-title">라벨</div>
+    <div class="row"><span>번호</span><span id="label-swatch"></span>
+      <input id="label-num" type="number" min="0" step="1" value="1">
+      <button id="btn-new-label" title="아직 안 쓴 새 번호 (M)">새 번호</button></div>
+    <div class="row"><span>붓 크기</span><input id="brush-size" type="range" min="1" max="60" value="10"><span id="brush-val">10</span></div>
+    <label class="row chk"><input id="preserve" type="checkbox"> 옆 세포 침범 안 함 (B)</label>
+    <label class="row chk"><input id="show-numbers" type="checkbox" checked> 번호 표시 (N)</label>
+    <div class="row"><button id="btn-shuffle" title="세포 색 섞기">색 섞기</button>
+      <button id="btn-revert" title="편집 대상 마스크를 열었을 때 상태로">원래대로</button></div>
+    </div>
+    <label class="row chk review-only"><input id="show-numbers-rv" type="checkbox" checked> 번호 표시 (N)</label>
+    <div class="sec-title">정보</div>
+    <div id="info" class="muted"></div>
+  </aside>
+
+  <main id="center">
+    <div id="toolbar">
+      <button class="tool on" data-tool="pan" title="이동 (6 / Z)">✥ 이동</button>
+      <span class="work-only edit-tools">
+      <button class="tool" data-tool="brush" title="브러쉬 (2 / P)">🖌 브러쉬</button>
+      <button class="tool" data-tool="eraser" title="지우개 (1 / E)">⌫ 지우개</button>
+      <button class="tool" data-tool="polygon" title="폴리곤 — 클릭으로 점, 더블클릭/Enter 완성 (3)">⬠ 폴리곤</button>
+      <button class="tool" data-tool="fill" title="채우기 (4 / F)">🪣 채우기</button>
+      <button class="tool" data-tool="picker" title="스포이트 — 클릭한 세포 번호 선택 (5 / L)">💧 스포이트</button>
+      <button class="tool" data-tool="vertex" title="꼭짓점 편집 — 세포 클릭 후 점 끌기 (V)">◇ 꼭짓점</button>
+      <button class="tool" data-tool="link" title="세포막↔세포핵 연결 — 세포 클릭 후 핵 클릭 (K)">🔗 연결</button>
+      <span class="sep"></span>
+      <button id="btn-undo" title="되돌리기 (Cmd/Ctrl+Z)">↶</button>
+      <button id="btn-redo" title="다시 실행 (Cmd/Ctrl+Shift+Z)">↷</button>
+      </span>
+      <button id="btn-fit" title="화면 맞춤 (0)">⤢ 맞춤</button>
+      <button id="btn-masks" title="전체 마스크 끄기/켜기 (Space 짧게)">◐ 마스크 끄기</button>
+      <button id="btn-solo" title="선택한 세포(와 짝인 핵)만 보기 (O) — 이동 도구로 세포 클릭">◎ 선택 세포만</button>
+      <span class="grow"></span>
+      <span id="hint" class="muted work-only">휠 = 확대 · 우클릭 드래그 / Space+드래그 = 이동 · X = 번호↔0</span>
+      <span class="muted review-only">클릭 = 객체 선택 · 빈 곳 더블클릭 = 누락 표시 · 1~7 = 오류 종류 · Del = 코멘트 삭제 · 우클릭 드래그 = 이동</span>
+    </div>
+    <div id="canvas-wrap"><canvas id="cv"></canvas></div>
+    <div id="statusbar"><span id="sb-pos" class="muted"></span><span class="grow"></span><span id="sb-msg"></span></div>
+  </main>
+
+  <aside id="right">
+    <div class="sec-title">세트</div>
+    <select id="set-select"></select>
+    <div class="row"><button id="btn-prev">◀ 이전 (,)</button><button id="btn-next">다음 (.) ▶</button></div>
+    <div id="review-panel" class="review-only">
+      <div class="sec-title">검수 — 선택한 객체</div>
+      <div id="rv-selected"></div>
+      <div class="sec-title" id="rv-list-title">이 세트의 코멘트</div>
+      <ul id="rv-list"></ul>
+    </div>
+    <div id="link-panel">
+      <div class="sec-title">세포막 ↔ 세포핵 대응</div>
+      <div id="link-summary" class="muted"></div>
+      <div class="row lk-tabs"><button class="lk-filter on" data-f="todo">확인 필요</button><button class="lk-filter" data-f="all">전체 목록</button></div>
+      <ul id="link-list"></ul>
+      <div id="link-actions"></div>
+      <label class="row chk"><input id="lk-lines" type="checkbox" checked> 연결선 표시 (주황 = 확인 필요)</label>
+      <div class="row work-only"><button id="lk-save" title="모든 세트의 대응표 CSV + 확인 기록을 수정본/ 에 저장">💾 대응표 저장</button><button id="lk-reset" title="이 세트의 수동 연결·확인을 지우고 자동 연결로">자동으로 되돌리기</button></div>
+    </div>
+    <div id="vertex-panel" class="work-only">
+      <div class="sec-title">꼭짓점 편집</div>
+      <div class="row"><span>점 개수</span>
+        <select id="vx-density"><option value="2">점 적게</option><option value="1" selected>보통</option><option value="0.5">점 많게</option></select></div>
+      <label class="row chk"><input id="vx-protect" type="checkbox" checked> 옆 세포 침범 안 함</label>
+      <div class="row"><button id="vx-apply" disabled>적용 (Enter)</button><button id="vx-cancel" disabled>취소 (Esc)</button></div>
+      <div id="vx-status" class="muted">◇ 꼭짓점 도구를 고르고 고칠 세포를 클릭하세요.<br>점 끌기 = 이동 · Shift+선 클릭 = 점 추가 · Alt+점 클릭 = 점 삭제</div>
+    </div>
+  </aside>
+</div>
+
+<!-- ── 단축키 안내 ── -->
+<div id="help" hidden>
+  <div class="help-box">
+    <div class="help-head"><b>단축키</b><button id="help-close">닫기</button></div>
+    <table>
+      <tr><td>1 / E</td><td>지우개</td><td>2 / P</td><td>브러쉬</td></tr>
+      <tr><td>3</td><td>폴리곤 (더블클릭·Enter 완성, Backspace 점 취소)</td><td>4 / F</td><td>채우기</td></tr>
+      <tr><td>5 / L</td><td>스포이트</td><td>6 / Z</td><td>이동</td></tr>
+      <tr><td>V</td><td>꼭짓점 편집</td><td>X</td><td>현재 번호 ↔ 0(지우기)</td></tr>
+      <tr><td>K</td><td>세포막↔세포핵 연결 (세포 클릭 → 핵 클릭, 다시 하면 해제)</td><td>Esc</td><td>연결 선택 취소</td></tr>
+      <tr><td>M</td><td>새 번호</td><td>[ / ]</td><td>붓 크기 줄이기 / 키우기</td></tr>
+      <tr><td>B</td><td>옆 세포 침범 안 함 켜기·끄기</td><td>C</td><td>편집 대상 외곽선 ↔ 채움</td></tr>
+      <tr><td>N</td><td>번호 표시</td><td>Tab</td><td>세포막 ↔ 세포핵 편집 대상 전환</td></tr>
+      <tr><td>, / .</td><td>이전 / 다음 세트</td><td>0</td><td>화면 맞춤</td></tr>
+      <tr><td>Cmd/Ctrl+Z</td><td>되돌리기</td><td>Cmd/Ctrl+Shift+Z</td><td>다시 실행</td></tr>
+      <tr><td>Cmd/Ctrl+S</td><td>저장</td><td>휠</td><td>확대·축소</td></tr>
+      <tr><td>우클릭 드래그</td><td>화면 이동 (어느 도구에서나)</td><td>Space+드래그</td><td>화면 이동</td></tr>
+      <tr><td>Space (짧게)</td><td>전체 마스크 끄기 / 켜기</td><td>O</td><td>선택 세포만 보기 (짝인 핵도 함께) — 이동 도구로 세포 클릭</td></tr>
+    </table>
+    <div class="help-head" style="margin-top:14px"><b>검수 모드</b></div>
+    <table>
+      <tr><td>클릭</td><td>객체 선택 (편집 대상 마스크 우선)</td><td>빈 곳 더블클릭</td><td>누락 지점 표시</td></tr>
+      <tr><td>1 ~ 7</td><td>오류 종류 지정·해제 (6 = 대응 오류)</td><td>Enter</td><td>코멘트 입력칸으로</td></tr>
+      <tr><td>Del</td><td>코멘트 삭제</td><td>Esc</td><td>선택 해제</td></tr>
+      <tr><td>Tab</td><td>세포막 ↔ 세포핵 선택 대상 전환</td><td>드래그</td><td>화면 이동</td></tr>
+    </table>
+    <div class="muted" style="margin-top:8px">코멘트는 이 브라우저에 자동으로 남고, <b>💾 검수 기록 저장</b>을 누르면 폴더의 수정본/검수기록.json 에 저장되어 다음에 폴더를 열 때 이어서 불러옵니다.</div>
+  </div>
+</div>
+<script src="app.js?v=10"></script>
+<script src="review.js?v=4"></script>
+<script src="link.js?v=3"></script>
+</body></html>

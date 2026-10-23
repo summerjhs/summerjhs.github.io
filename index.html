@@ -415,6 +415,35 @@ footer{
     </div>
   </article>
 
+  <article class="card">
+    <div class="card-head">
+      <div class="card-icon">&#9678;</div>
+      <h2>세포 마스크 편집기</h2>
+    </div>
+    <p class="card-desc">형광 현미경 채널 TIF(세포막·세포핵)와 인스턴스 마스크 TIF를 폴더째 열어 세포막·세포핵 마스크를 겹쳐 보고 수정합니다. 수정본은 폴더 안 <b>수정본/</b>에 TIF로 저장합니다. <b>Chrome·Edge 권장</b>(폴더 읽기·쓰기 사용).</p>
+    <ul class="tools">
+      <li><b>보기</b> — 세트 넘겨보기, 채널별 밝기·대비·감마, 마스크별 투명도·외곽선 두께/채움, 세포 번호, Space로 마스크 끄기·켜기, 선택 세포만 보기, 초벌·정답 겹쳐 비교.</li>
+      <li><b>편집</b> — 브러쉬·지우개·폴리곤·채우기·스포이트, 옆 세포 침범 방지, X로 번호↔0 전환, 되돌리기·다시 실행.</li>
+      <li><b>꼭짓점 편집</b> — 세포를 클릭하면 외곽선이 점으로 바뀌고, 점을 끌어 테두리를 고친 뒤 마스크에 반영.</li>
+      <li><b>세포막↔세포핵 대응</b> — 겹침으로 자동 연결, 핵 없음·핵 여러 개·걸침만 목록으로 확인, 클릭으로 연결·해제, 대응표 CSV 저장.</li>
+      <li><b>이동·저장</b> — 휠 확대, 우클릭 드래그 이동, 수정본 TIF 저장 후 다시 열면 이어서 작업.</li>
+      <li><b>검수 모드</b> — 세포막·세포핵 객체 클릭 → 오류 종류·코멘트, 세포↔핵 대응 확인과 대응 오류 코멘트, 빈 곳 더블클릭 → 누락 표시, 검수 기록 JSON 저장·불러오기.</li>
+      <li><b>PPTX 내보내기</b> — 코멘트 객체마다 세포핵·세포막·합성 원본과 라벨링 확대 이미지, 전체 위치를 넣은 슬라이드 리포트.</li>
+    </ul>
+    <div class="card-tags">
+      <span class="tag">Cell</span>
+      <span class="tag">Instance Mask</span>
+      <span class="tag">TIFF</span>
+      <span class="tag">Segmentation</span>
+      <span class="tag">Review</span>
+      <span class="tag">Export PPTX</span>
+      <span class="tag">Local Save</span>
+    </div>
+    <div class="card-links">
+      <a href="./cell-mask-editor/">Open</a>
+    </div>
+  </article>
+
 </main>
 
 <footer>summerjhs</footer>
