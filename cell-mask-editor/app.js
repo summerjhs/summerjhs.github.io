@@ -99,7 +99,7 @@ async function loadFromDirHandle(dir) {
     if (h.kind === 'file') addFile(name, h);
     else if (nfc(name) === SAVE_DIR) for await (const [n2, h2] of h.entries()) if (h2.kind === 'file') addFile(`${SAVE_DIR}/${n2}`, h2);
   }
-  await startFolder(dir.name);
+  S.dirLabel = dir.name; await startFolder(dir.name);
 }
 
 async function loadFromFileList(list) {  // <input webkitdirectory> 또는 테스트용 [{path, file}]
@@ -111,11 +111,11 @@ async function loadFromFileList(list) {  // <input webkitdirectory> 또는 테�
     if (parts.length > 1) { root = root || parts[0]; parts.shift(); }
     addFile(parts.join('/'), file);
   }
-  await startFolder(root || '선택한 파일');
+  S.dirLabel = root || 'masks'; await startFolder(root || '선택한 파일');
 }
 
 function resetFolder() {
-  S.files.clear(); S.edited.clear(); S.cache.clear(); S.dir = null; S.sets = []; S.idx = -1; S.cur = null;
+  S.files.clear(); S.edited.clear(); S.cache.clear(); S.dir = null; S.lastSave = ''; S.sets = []; S.idx = -1; S.cur = null;
   S.poly = null; S.vx = null;
 }
 
@@ -174,34 +174,53 @@ async function goSet(i, fit) {
   if (fit) fitView();
   R.sel = null; renderReviewPanel();
   L.sel = null; L.pending = null; renderLinkPanel();
-  buildLayers(); updateInfo(); syncLabelUI(); msg('');
+  buildLayers(); updateInfo(); syncLabelUI(); updateDirty(); msg('');
   draw();
 }
 
-async function saveAll() {
-  const jobs = [];
+// 저장: 수정한 마스크(없으면 지금 보고 있는 세트의 마스크 전부)를 폴더의 수정본/ 에 쓰거나 zip으로 내려받는다.
+async function saveAll(asZip = false) {
+  if (!S.cur) return;
+  let jobs = [];
   for (const d of S.cache.values()) for (const [k, m] of Object.entries(d.masks)) if (m.dirty) jobs.push([d, k, m]);
-  if (!jobs.length) { msg('저장할 수정 사항이 없습니다.'); return; }
+  const onlyCurrent = !jobs.length;
+  if (onlyCurrent) jobs = Object.entries(S.cur.masks).map(([k, m]) => [S.cur, k, m]);
+  const names = jobs.map(([d, k]) => `${d.name}_${k}.tif`);
+  const what = onlyCurrent ? `수정된 마스크가 없어 현재 세트(${S.cur.name})의 마스크 ${jobs.length}개를` : `수정한 마스크 ${jobs.length}개를`;
   try {
-    if (S.dir) {
-      if ((await S.dir.requestPermission({ mode: 'readwrite' })) !== 'granted') { msg('폴더 쓰기 권한이 없어 저장하지 못했습니다.'); return; }
+    let where;
+    if (S.dir && !asZip) {
+      if ((await S.dir.requestPermission({ mode: 'readwrite' })) !== 'granted') {
+        alert('폴더 쓰기 권한이 허용되지 않아 폴더에 저장하지 못했습니다.\n대신 zip 파일로 내려받습니다.'); return saveAll(true);
+      }
       const sub = await S.dir.getDirectoryHandle(SAVE_DIR, { create: true });
       for (const [d, k, m] of jobs) {
         const fn = `${d.name}_${k}.tif`, fh = await sub.getFileHandle(fn, { create: true });
         const w = await fh.createWritable(); await w.write(writeTiff(m.data, d.w, d.h)); await w.close();
         S.edited.set(fn, fh); m.dirty = false; m.fromEdited = true;
       }
-      msg(`${jobs.length}개 마스크를 ${S.dir.name}/${SAVE_DIR}/ 에 저장했습니다.`);
+      where = `${S.dir.name}/${SAVE_DIR}/`;
     } else {
-      for (const [d, k, m] of jobs) {
-        const a = document.createElement('a'); a.href = URL.createObjectURL(writeTiff(m.data, d.w, d.h));
-        a.download = `${d.name}_${k}.tif`; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
-        m.dirty = false; await new Promise((r) => setTimeout(r, 300));
-      }
-      msg(`${jobs.length}개 마스크를 다운로드했습니다. 폴더 안 ${SAVE_DIR}/ 에 넣으면 다음에 이어서 열립니다.`);
+      const entries = [];
+      for (const [d, k, m] of jobs) entries.push({ name: `${SAVE_DIR}/${d.name}_${k}.tif`, data: new Uint8Array(await writeTiff(m.data, d.w, d.h).arrayBuffer()) });
+      download(zipStore(entries), `수정본_${S.dirLabel || 'masks'}_${todayYMD()}.zip`);
+      for (const [, , m] of jobs) m.dirty = false;
+      where = `zip 파일 (압축을 풀면 ${SAVE_DIR}/ 폴더가 나옵니다 — 데이터 폴더 안에 넣으면 다음에 이어서 열림)`;
     }
-  } catch (e) { console.error(e); msg('저장 실패: ' + e.message); }
-  buildLayers(); updateInfo();
+    const t = new Date().toTimeString().slice(0, 5);
+    S.lastSave = `저장됨 ${t} · ${jobs.length}개`;
+    msg(`${what} ${where} 에 저장했습니다.`);
+    alert(`${what} 저장했습니다.\n\n저장 위치: ${where}\n${names.slice(0, 8).join('\n')}${names.length > 8 ? `\n… 외 ${names.length - 8}개` : ''}\n\n원본 파일은 바뀌지 않습니다. 다음에 같은 폴더를 열면 수정본을 자동으로 불러옵니다.`);
+  } catch (e) { console.error(e); alert('저장 실패: ' + e.message); }
+  updateDirty(); buildLayers(); updateInfo();
+}
+function noChangeHint() {  // 편집했는데 바뀐 픽셀이 0개일 때 이유를 알려 준다
+  const def = MASKS.find((m) => m.key === S.active), why = [];
+  if (S.tool !== 'eraser' && S.label === 0) why.push('지금 번호가 0(지우기)입니다 — X 키로 번호를 되돌리세요');
+  if (S.preserve) why.push('"옆 세포 침범 안 함"이 켜져 있어 다른 세포 위에는 칠해지지 않습니다');
+  if (S.tool === 'eraser') why.push(`지운 곳에 ${def?.name || ''} 객체가 없습니다`);
+  else if (S.label) why.push(`이미 ${S.label}번인 곳에 ${S.label}번으로 칠했을 수 있습니다`);
+  msg(`바뀐 픽셀이 없습니다 (편집 대상: ${def?.name || '-'}) — ${why.join(' · ')}`);
 }
 
 // ───────────────────────── 계산 도우미 ─────────────────────────
@@ -439,7 +458,7 @@ function finishPolygon() {
   const m = activeMask(); if (!m || !S.poly || S.poly.length < 3) { S.poly = null; draw(); return; }
   const label = S.label; beginEdit(m);
   rasterPolygon(S.poly, S.cur.w, S.cur.h, (i) => { if (canWrite(m, i, label)) m.data[i] = label; });
-  const n = endEdit(m); S.poly = null; msg(`폴리곤 적용 (${n}픽셀)`); draw();
+  const n = endEdit(m); S.poly = null; if (n) msg(`폴리곤 적용 (${n}픽셀)`); else noChangeHint(); draw();
 }
 function newLabel() {
   const m = activeMask(); if (!m) return;
@@ -589,7 +608,7 @@ cv.addEventListener('pointerdown', (e) => {
     beginEdit(m); paintLine(m, [p.ix, p.iy], [p.ix, p.iy], label);
     S.drag = { type: 'paint', last: [p.ix, p.iy], label, m };
   } else if (S.tool === 'fill' && inside) {
-    beginEdit(m); floodFill(m, px, py, S.label); const n = endEdit(m); msg(`채우기 (${n}픽셀)`);
+    beginEdit(m); floodFill(m, px, py, S.label); const n = endEdit(m); if (n) msg(`채우기 (${n}픽셀)`); else noChangeHint();
   } else if (S.tool === 'picker' && inside) {
     setLabel(m.data[py * S.cur.w + px]); msg(`번호 ${S.label} 선택`);
   } else if (S.tool === 'polygon') {
@@ -609,7 +628,7 @@ cv.addEventListener('pointermove', (e) => {
 });
 const endDrag = () => {
   const dr = S.drag; S.drag = null; cv.style.cursor = '';
-  if (dr?.type === 'paint') endEdit(dr.m);
+  if (dr?.type === 'paint' && !endEdit(dr.m)) noChangeHint();
   if (dr?.type === 'rv' && !dr.moved) reviewClick(dr.p, dr.px, dr.py, dr.inside);
   if (dr?.type === 'pan' && dr.pick && S.solo && dr.inside && Math.abs(S.view.tx - dr.tx) + Math.abs(S.view.ty - dr.ty) < 3) {
     const m = activeMask(); if (m) { setLabel(m.data[dr.py * S.cur.w + dr.px]); msg(S.label ? `${S.label}번 세포만 보기` : '배경을 클릭했습니다 — 세포를 클릭하세요'); draw(); }
@@ -763,7 +782,9 @@ function updateInfo() {
 
 function updateDirty() {
   let n = 0; for (const d of S.cache.values()) for (const m of Object.values(d.masks)) if (m.dirty) n++;
-  $('btn-save').disabled = !n; $('save-state').textContent = n ? `수정된 마스크 ${n}개 (저장 안 됨)` : '';
+  $('btn-save').disabled = $('btn-save-zip').disabled = !S.cur;
+  $('save-state').textContent = n ? `수정된 마스크 ${n}개 (저장 안 됨)` : S.lastSave || '';
+  $('save-state').classList.toggle('unsaved', !!n);
   [...$('set-select').options].forEach((o, i) => { const d = S.cache.get(S.sets[i]);
     const dirty = d && Object.values(d.masks).some((m) => m.dirty); o.textContent = (dirty ? '● ' : '') + S.sets[i]; });
   clearTimeout(updateDirty.t); updateDirty.t = setTimeout(() => { buildLayers(); updateInfo(); }, 300);
@@ -784,7 +805,8 @@ function msg(t) { $('sb-msg').textContent = t; clearTimeout(msgTimer); if (t) ms
 // ───────────────────────── 버튼 연결 ─────────────────────────
 $('btn-open').onclick = openFolder;
 $('dir-input').onchange = (e) => e.target.files.length && loadFromFileList([...e.target.files]);
-$('btn-save').onclick = saveAll;
+$('btn-save').onclick = () => saveAll(false);
+$('btn-save-zip').onclick = () => saveAll(true);
 $('btn-help').onclick = () => ($('help').hidden = false);
 $('help-close').onclick = () => ($('help').hidden = true);
 $('help').onclick = (e) => { if (e.target.id === 'help') $('help').hidden = true; };

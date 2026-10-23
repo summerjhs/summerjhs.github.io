@@ -145,3 +145,7 @@ body.review #topbar { background: #22191d; }
 .rv-link { margin: 4px 0; font-size: 12px; color: #9cc8ff; line-height: 1.5; }
 .rv-link.warn { color: #ffb066; }
 .rv-linkerr { width: 100%; margin: 2px 0 4px; font-size: 12px; }
+
+#save-state.unsaved { color: #ffd166; }
+#btn-save-zip:not(:disabled) { color: #ffe08a; }
+#lk-csv { width: 100%; }

@@ -234,6 +234,23 @@ function linkCsv(d, g) {
   for (const x of lk.orphans) rows.push([d.name, g, '', x.id, x.ok ? '확인됨' : '확인 필요', x.manual ? '연결 끊음' : '세포 밖', Math.round(x.frac * 100), '', x.area]);
   return new Blob(['﻿' + rows.map((r) => r.map(q).join(',')).join('\r\n')], { type: 'text/csv' });
 }
+async function downloadLinksCsv() {  // 모든 세트의 대응표를 CSV 한 파일로 내려받기 (작업·검수 모드 모두)
+  const btn = $('lk-csv'); btn.disabled = true;
+  try {
+    let lines = [];
+    for (const name of S.sets) {
+      const d = await loadSet(name);
+      for (const g of ['초벌', '정답']) {
+        const b = linkCsv(d, g); if (!b) continue;
+        const rows = (await b.text()).replace(/^\ufeff/, '').split('\r\n');
+        lines = lines.length ? lines.concat(rows.slice(1)) : rows;
+      }
+    }
+    if (!lines.length) { alert('세포막·세포핵 마스크가 함께 있는 세트가 없습니다.'); return; }
+    download(new Blob(['\ufeff' + lines.join('\r\n')], { type: 'text/csv' }), `대응표_${L.folder}_${todayYMD()}.csv`);
+    msg(`대응표 CSV를 내려받았습니다 (${lines.length - 1}줄, 세트 ${S.sets.length}개).`);
+  } finally { btn.disabled = false; }
+}
 async function saveLinks() {
   const files = [];
   for (const name of S.sets) {  // 모든 세트를 불러와 대응표를 만든다 (열어 보지 않은 세트도 자동 연결 결과로)
@@ -258,4 +275,5 @@ document.querySelectorAll('.lk-filter').forEach((b) => (b.onclick = () => { L.fi
 $('lk-lines').onchange = (e) => { L.lines = e.target.checked; draw(); };
 $('lk-reset').onclick = resetSetLinks;
 $('lk-save').onclick = saveLinks;
+$('lk-csv').onclick = downloadLinksCsv;
 Object.assign(window.cellMaskEditor, { L, computeLinks, linkClick, assignNucleus, toggleOk, linkCsv, saveLinks });
